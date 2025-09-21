@@ -1,5 +1,9 @@
 # Build outputs produced by ndk-build
 libs/
+!kernel/libs/
+!kernel/libs/arm64-v8a/
+kernel/libs/arm64-v8a/PUBGM_kernel.sh
+!kernel/libs/arm64-v8a/PUBGM_kernel.txt
 obj/
 
 # Generic compiled artifacts
