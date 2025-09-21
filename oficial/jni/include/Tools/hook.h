@@ -1,0 +1,427 @@
+#include <cstring>
+#include <cstdio>
+#include <unistd.h>
+#include <sys/system_properties.h>
+#include <dlfcn.h>
+#include <string.h>
+#include <jni.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/uio.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <fstream>
+#include <cassert>
+#include <string>
+#include <iostream>
+#include <sys/mman.h>
+#include <dlfcn.h>
+#include <math.h>
+#include <array>
+#include <EGL/egl.h>
+#include <GLES3/gl3.h>
+#include <sys/inotify.h>
+#include <wanbai.hpp>
+#include <VecTool.h>
+#include <timer.h>
+#include <UeTools.h>
+//#include <hook.h>
+#include <draw.h>
+#include "globals.h"
+void getUTF8(UTF8 * buf, long namepy)
+{
+    UTF16 buf16[16] = { 0 };
+    driver->read(namepy, buf16, 28);
+    UTF16 *pTempUTF16 = buf16;
+    UTF8 *pTempUTF8 = buf;
+    UTF8 *pUTF8End = pTempUTF8 + 32;
+    while (pTempUTF16 < pTempUTF16 + 28)
+    {
+        if (*pTempUTF16 <= 0x007F && pTempUTF8 + 1 < pUTF8End)
+        {
+            *pTempUTF8++ = (UTF8) * pTempUTF16;
+        }
+        else if (*pTempUTF16 >= 0x0080 && *pTempUTF16 <= 0x07FF && pTempUTF8 + 2 < pUTF8End)
+        {
+            *pTempUTF8++ = (*pTempUTF16 >> 6) | 0xC0;
+            *pTempUTF8++ = (*pTempUTF16 & 0x3F) | 0x80;
+        }
+        else if (*pTempUTF16 >= 0x0800 && *pTempUTF16 <= 0xFFFF && pTempUTF8 + 3 < pUTF8End)
+        {
+            *pTempUTF8++ = (*pTempUTF16 >> 12) | 0xE0;
+            *pTempUTF8++ = ((*pTempUTF16 >> 6) & 0x3F) | 0x80;
+            *pTempUTF8++ = (*pTempUTF16 & 0x3F) | 0x80;
+        }
+        else
+        {
+            break;
+        }
+        pTempUTF16++;
+    }
+}
+
+void GetClassName(char *Name, long int address, int id)
+{
+    long int ClassNameadd = driver->read<uintptr_t>(address + (id / 0x4000) * 0x8);
+    long int ClassNameaddr = driver->read<uintptr_t>(ClassNameadd + (id % 0x4000) * 0x8);
+    driver->read(ClassNameaddr + 0xC, Name, 64);
+}
+
+FTransform getBone(uintptr_t addr)
+{
+    FTransform transform;  
+    driver->read(addr, reinterpret_cast<void*>(&transform), 4 * 11);
+    return transform;
+}
+
+bool GetWorld;
+float camera;
+uintptr_t libUE4;
+TempData TempRead;
+TempData TempUes;
+TempData *tempRead;
+
+uintptr_t Uworld, Uleve, Gname, Objaddr, TestArrayaddr, Arrayaddr, Matrix, oneself, Bone, Human, Mesh, g_lineOfSightTo;
+int Count, AddrCount, MyTeam, AddrCount1;
+
+pid_t get_name_pid(char* name) {
+    FILE* fp;
+    pid_t pid;
+    char cmd[0x100] = "pidof ";
+
+    strcat(cmd, name);
+    fp = popen(cmd,"r");
+    fscanf(fp,"%d", &pid);
+    pclose(fp);
+    return pid;
+}
+
+
+using namespace std;
+
+
+
+
+void hack_thread() 
+{
+
+    char Name[128];
+	pid_t pid = get_name_pid((char*)"com.tencent.ig");
+	pid_t pid2 = get_name_pid ((char*)"com.rekoo.pubgm");
+	pid_t pid3 = get_name_pid ((char*)"com.vng.pubgmobile");
+	pid_t pid4 = get_name_pid ((char*)"com.pubg.krmobile");
+	pid_t pid5 = get_name_pid ((char*)"com.pubg.imobile");
+	
+	if (pid > 0) {		
+		driver->initialize(pid);
+	} else if (pid2 > 0) {
+		driver->initialize(pid2);
+	} else if (pid3 > 0) {
+		driver->initialize(pid3);
+	} else if (pid4 > 0) {
+		driver->initialize(pid4);
+	} else if (pid5 > 0) {
+		driver->initialize(pid5);
+	} else {
+		printf("游戏未启动");
+		exit(0);
+	}
+	
+    memset(matrix, 0, 16);
+	
+	libUE4 = driver->getModuleBase("libUE4.so");
+	
+	while (!libUE4)
+	{
+		libUE4 = driver->getModuleBase("libUE4.so");
+		sleep(1);
+	}
+	
+    tempRead = &TempUes;
+
+	if (screen_x > screen_y) {
+		Higtih = screen_y / 2;
+		Widtih = screen_x / 2;
+	} else {
+		Higtih = screen_x / 2;
+		Widtih = screen_y / 2;
+	}
+	
+	for (;;) {
+		TempRead.mPlayerArray.Count = AddrCount;
+		TempRead.mwuziArray.Count = AddrCount1;
+		*tempRead = TempRead;
+		
+		AddrCount = 0;
+		AddrCount1 = 0;
+		模块地址 = libUE4;
+		数组 = Arrayaddr;
+	
+	
+/*libUE4.so
+矩阵:0xCAAA348 + 0x20 + 0x270
+自身:0xC4761E0 + 0x0
+世界:自身 + 0x20 + 0xA0
+数量:0xA8 队伍:0x8F0 人机判断:0x9A1
+当前血量:0xD60 最大:0xD64 倒地血量:0x18E0
+过滤物资:0x2758 动作:0xF30
+X坐标:0x1B0 + 0x1C0
+Y坐标:0x1B0 + 0x1C4
+Z坐标:0x1B0 + 0x1C8
+阵列偏移:0x458 骨骼阵列:0x1B0
+骨骼指针:0x820 + 0x30
+FOV: 自身+0x90+0x490+0x4A4
+相机x: 0x90+0x490+0x480
+相机y: 0x90+0x490+0x484
+相机z: 0x90+0x490+0x488
+枪口x: 0x498
+枪口y: 0x49C
+开火: 0x15C8 开镜: 0xFF0
+
+
+偷的*/
+	
+		Uworld = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xEA79A90) + 0x810) + 0x78); // 游戏世界
+		Gname = driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xDD879E0) + 0x110);//😭
+    	Uleve = driver->read<uintptr_t>(Uworld + 0x30);    // Uleve
+    	Arrayaddr = driver->read<uintptr_t>(Uleve + 0xA0);
+		Count = driver->read<int>(Uleve + 0xA8);  // 阵列数量
+		
+		if (Count <= 0 || Count > 2000) {			
+        	continue;           // 防止数组获取错误	
+		}
+		
+		Matrix = driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xEA4DC40) + 0x20) + 0x270;	
+		oneself = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xEA79A90) + 0x810) + 0x78) + 0x38)+ 0x78)+0x30) + 0x27a8);  // 自身对象
+		MyTeam = driver->read<int>(oneself + 0x938);		
+		//自身动作 = driver->read<int>(oneself + 0xfa8);
+	    TempRead.MyWeapon = driver->read<int>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(oneself + 0x2528) + 0x558) + 0x1250) + 0x178);
+	   // 子弹速度 = driver->read<float>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(oneself + 0x2438) + 0x558) + 0x840) + 0x508);
+		driver->read(driver->read<uintptr_t>(oneself + 0x1b0) + 0x1c0, &TempRead.MyPos, 12);				
+		
+		driver->read(Matrix, &matrix, 16 * 4);	
+		driver->read(Matrix, &TempRead.matrix, 16 * 4);
+		
+		TempRead.Fov = driver->read<float>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xDEBF960) + 0x108) + 0x4E4);   // 自身FOV   
+		TempRead.IsAiming = driver->read<int>(oneself + 0x1071);
+        TempRead.IsFiring = driver->read<int>(oneself + 0x1708);	//开火
+				
+		for (int i = 0; i < Count; i ++)
+		{		
+			Objaddr = driver->read<uintptr_t>(Arrayaddr + 8 * i);  // 遍历数量次数
+			
+			if ((DrawIo[11] || DrawIo[12] || DrawIo[14] || DrawIo[71] || DrawIo[72] || DrawIo[33])&&driver->read<float>(Objaddr + 0x2a68) != 479.5) {//物资
+			GetClassName(Name, driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xe47e8f0) + 0x110), driver->read<int>(Objaddr + 0x18));//
+			uintptr_t Object = driver->read<uintptr_t>(Objaddr + 0x1b0);
+			
+			if (Object <= 0xffff || Object == 0 || Object <= 0x10000000 || Object % 4 != 0 || Object >= 0x10000000000)
+            	continue;
+				
+			auto *wuzis = &TempRead.mwuziArray.mwuzi[AddrCount1];
+			
+			driver->read(Object + 0x1c0, &wuzis->Pos, 12);
+			if (wuzis->Pos.x == 0 || wuzis->Pos.y == 0 || wuzis->Pos.x == 0) {
+         		continue;
+     		}
+        GetDistance(wuzis->Pos, TempRead.MyPos, &wuzis->Distance);
+		WorldToScreen(&wuzis->ScreenPos, &camera, &wuzis->w, wuzis->Pos);			
+			strcpy(wuzis->wuziName,Name);						
+			wuzis->camera = camera;	
+	AddrCount1++;
+			}
+					
+			if (driver->read<float>(Objaddr + 0x2a68) != 479.5) {//物资过滤
+				continue;
+			}
+			uintptr_t object = driver->read<uintptr_t>(Objaddr + 0x1b0);
+			
+			if (object <= 0xffff || object == 0 || object <= 0x10000000 || object % 4 != 0 || object >= 0x10000000000)
+            	continue;
+				
+			auto *Players = &TempRead.mPlayerArray.mPlayer[AddrCount];
+			
+			driver->read(object + 0x1c0, &Players->Pos, 12);
+			if (Players->Pos.x == 0 || Players->Pos.y == 0 || Players->Pos.x == 0) {
+         		continue;
+     		}
+			
+			int State = driver->read<int>(Objaddr + 0xfa8);//状态 
+        	if (State == 262144 || State == 262152 || State == 1048576 || State == 1048592)
+           		continue;
+        
+        	Players->TeamID = driver->read<int>(Objaddr + 0x938);//队伍
+        	if (Players->TeamID == MyTeam || Players->TeamID < 1)
+            	continue;
+            
+        	float MinHealth = driver->read<float>(Objaddr + 0xdb8);//血量
+        	float MaxHealth = driver->read<float>(Objaddr + 0xdbc);//最大血量
+        	Players->Health = (MinHealth / MaxHealth) * 100;
+        	if (Players->Health > 100)
+           		continue;          	
+             
+          /*  Players->scwq = driver->read<int>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(Objaddr + 0x2238) + 0x500) + 0x7A8)/* + 0x178); //手持
+			Players->dqzd = driver->read<int>(driver->read<uintptr_t>(driver->read<uintptr_t>(Objaddr + 0x2238)+ 0x500)+0xE88);		
+			Players->zdmax = driver->read<int>(driver->read<uintptr_t>(driver->read<uintptr_t>(Objaddr + 0x2238)+ 0x500)+0xEA0);
+			Players->Dzid = driver->read<uintptr_t>(Objaddr + 0xF30);//人物动作*/
+			Players->scwq = driver->read<int>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(Objaddr + 0x2528) + 0x558) + 0x1250) + 0x178);
+			Players->dqzd = driver->read<int>(driver->read<uintptr_t>(driver->read<uintptr_t>(Objaddr + 0x2528)+ 0x558)+0xE88);
+			Players->zdmax = driver->read<int>(driver->read<uintptr_t>(driver->read<uintptr_t>(Objaddr + 0x2528)+ 0x558)+0xF08);
+			
+			Players->Dzid = driver->read<uintptr_t>(Objaddr + 0xfa8);
+			
+		/*	if (driver->read<uintptr_t>(Objaddr + 0x1c0)) {
+            	driver->read(driver->read<uintptr_t>(Objaddr + 0x1c0) + 0x1330, &Players->Predict, sizeof(Players->Predict)); // 载具向量
+      	 	} else {
+            	driver->read(object + 0x260, &Players->Predict, sizeof(Players->Predict)); // 敌人向量
+        	}     */
+			
+			GetDistance(Players->Pos, TempRead.MyPos, &Players->Distance);
+			WorldToScreen(&Players->ScreenPos, &camera, &Players->w, Players->Pos);			
+						
+			Players->camera = camera;
+			
+			long int 人机 = driver->read<int>(Objaddr + 0x9e9);
+            if (人机==16842753 or 人机==16843009 or 人机==16843008) {
+            Players->IsBot = 1;
+            } else {
+            Players->IsBot = 0;}
+			
+			
+			getUTF8(Players->PlayerName, driver->read<uintptr_t>(Objaddr + 0x900));
+			
+			Mesh = driver->read<uintptr_t>(Objaddr + 0x4a8);		//阵列偏移
+			
+			if (Mesh <= 0xffff) 
+				continue;
+        	
+        	Human = Mesh + 0x1B0;	//阵列指针
+			
+        	Bone = /*driver->read<uintptr_t>(*/driver->read<uintptr_t>(Mesh + 0x8a8)/* + 0x30)*/;		//骨骼指针
+			
+			if (Bone <= 0xffff) //fffff
+				continue;
+			
+			FTransform meshtrans = getBone(Human);
+            FMatrix c2wMatrix = TransformToMatrix(meshtrans);		
+			
+         FTransform headtrans = getBone(Bone + 5 * 48);
+            FMatrix boneMatrix = TransformToMatrix(headtrans);
+            Players->Head.Pos = MarixToVector(MatrixMulti(boneMatrix, c2wMatrix));
+            Players->Head.Pos.z += 7; /* 脖子长度 */   			
+            Players->Head.ScreenPos = WorldToScreen(Players->Head.Pos, matrix, camera);
+
+            if((Players->Head.Pos.x -Players->Pos.x )>300)
+                    continue;
+            if((Players->Head.Pos.y -Players->Pos.y )>300)
+                    continue;
+            if((Players->Head.Pos.z -Players->Pos.z )>300)
+                    continue;
+            
+            
+            
+			
+            /* 胸部 */
+            FTransform chesttrans = getBone(Bone + 4 * 48);
+            FMatrix boneMatrix1 = TransformToMatrix(chesttrans);
+            Players->Chest.Pos = MarixToVector(MatrixMulti(boneMatrix1, c2wMatrix));
+            Players->Chest.ScreenPos = WorldToScreen(Players->Chest.Pos, matrix, camera);
+            
+			/* 盆骨 */
+            FTransform pelvistrans = getBone(Bone + 0 * 48);
+            FMatrix boneMatrix2 = TransformToMatrix(pelvistrans);
+            Players->Pelvis.Pos = MarixToVector(MatrixMulti(boneMatrix2, c2wMatrix));
+            Players->Pelvis.Pos.z -= 5; /* 脖子长度 */   			
+
+            Players->Pelvis.ScreenPos = WorldToScreen(Players->Pelvis.Pos, matrix, camera);
+			
+            /* 左肩膀 */
+            FTransform lshtrans = getBone(Bone + 11 * 48);
+            FMatrix boneMatrix3 = TransformToMatrix(lshtrans);/*仿凯撒UI 圈钱死全家https://t.me/yaomuhan6*/
+            Players->Left_Shoulder.Pos = MarixToVector(MatrixMulti(boneMatrix3, c2wMatrix));
+            Players->Left_Shoulder.ScreenPos = WorldToScreen(Players->Left_Shoulder.Pos, matrix, camera);
+			
+            /* 右肩膀 */
+            FTransform rshtrans = getBone(Bone + 32 * 48);
+            FMatrix boneMatrix4 = TransformToMatrix(rshtrans);
+            Players->Right_Shoulder.Pos = MarixToVector(MatrixMulti(boneMatrix4, c2wMatrix));
+            Players->Right_Shoulder.ScreenPos = WorldToScreen(Players->Right_Shoulder.Pos, matrix, camera);
+			
+            /* 左手肘 */
+            FTransform lelbtrans = getBone(Bone + 12 * 48);
+            FMatrix boneMatrix5 = TransformToMatrix(lelbtrans);
+            Players->Left_Elbow.Pos = MarixToVector(MatrixMulti(boneMatrix5, c2wMatrix));
+            Players->Left_Elbow.ScreenPos = WorldToScreen(Players->Left_Elbow.Pos, matrix, camera);
+			
+            /* 右手肘 *//*仿凯撒UI 圈钱死全家https://t.me/yaomuhan6*/
+            FTransform relbtrans = getBone(Bone + 33 * 48);
+            FMatrix boneMatrix6 = TransformToMatrix(relbtrans);
+            Players->Right_Elbow.Pos = MarixToVector(MatrixMulti(boneMatrix6, c2wMatrix));
+            Players->Right_Elbow.ScreenPos = WorldToScreen(Players->Right_Elbow.Pos, matrix, camera);
+			
+            /* 左手腕 */
+            FTransform lwtrans = getBone(Bone + 63 * 48);
+            FMatrix boneMatrix7 = TransformToMatrix(lwtrans);
+            Players->Left_Wrist.Pos = MarixToVector(MatrixMulti(boneMatrix7, c2wMatrix));
+            Players->Left_Wrist.ScreenPos = WorldToScreen(Players->Left_Wrist.Pos, matrix, camera);
+			
+            /* 右手腕 */
+            FTransform rwtrans = getBone(Bone + 62 * 48);
+            FMatrix boneMatrix8 = TransformToMatrix(rwtrans);
+            Players->Right_Wrist.Pos = MarixToVector(MatrixMulti(boneMatrix8, c2wMatrix));
+            Players->Right_Wrist.ScreenPos = WorldToScreen(Players->Right_Wrist.Pos, matrix, camera);
+
+            /* 右大腿 */
+            FTransform Lrshtrans = getBone(Bone + 52 * 48);
+            FMatrix boneMatrix10 = TransformToMatrix(Lrshtrans);/*仿凯撒UI 圈钱死全家https://t.me/yaomuhan6*/
+            Players->Right_Thigh.Pos = MarixToVector(MatrixMulti(boneMatrix10, c2wMatrix));
+            Players->Right_Thigh.ScreenPos = WorldToScreen(Players->Right_Thigh.Pos, matrix, camera);
+			
+
+			
+            /* 左大腿 */
+            FTransform Llshtrans = getBone(Bone + 56 * 48);
+            FMatrix boneMatrix9 = TransformToMatrix(Llshtrans);
+            Players->Left_Thigh.Pos = MarixToVector(MatrixMulti(boneMatrix9, c2wMatrix));
+			if (abs(Players->Left_Thigh.Pos.x-Players->Pelvis.Pos.x)>20||abs(Players->Left_Thigh.Pos.y-Players->Pelvis.Pos.y)>20||abs(Players->Left_Thigh.Pos.z-Players->Pelvis.Pos.z)>20){
+			Players->Left_Thigh.Pos.x=Players->Pelvis.Pos.x*2- Players->Right_Thigh.Pos.x;
+			Players->Left_Thigh.Pos.y=Players->Pelvis.Pos.y*2- Players->Right_Thigh.Pos.y;
+			Players->Left_Thigh.Pos.z=(Players->Pelvis.Pos.z-3)*2- Players->Right_Thigh.Pos.z;
+			
+			
+			}
+            Players->Left_Thigh.ScreenPos = WorldToScreen(Players->Left_Thigh.Pos, matrix, camera);
+
+            /* 左膝盖 */
+            FTransform Llelbtrans = getBone(Bone + 53 * 48);
+            FMatrix boneMatrix11 = TransformToMatrix(Llelbtrans);
+            Players->Left_Knee.Pos = MarixToVector(MatrixMulti(boneMatrix11, c2wMatrix));
+            Players->Left_Knee.ScreenPos = WorldToScreen(Players->Left_Knee.Pos, matrix, camera);
+			
+            /* 右膝盖 */
+            FTransform Lrelbtrans = getBone(Bone + 57 * 48);
+            FMatrix boneMatrix12 = TransformToMatrix(Lrelbtrans);
+            Players->Right_Knee.Pos = MarixToVector(MatrixMulti(boneMatrix12, c2wMatrix));
+            Players->Right_Knee.ScreenPos = WorldToScreen(Players->Right_Knee.Pos, matrix, camera);
+			
+            /* 左脚腕 */
+            FTransform Llwtrans = getBone(Bone + 54 * 48);
+            FMatrix boneMatrix13 = TransformToMatrix(Llwtrans);
+            Players->Left_Ankle.Pos = MarixToVector(MatrixMulti(boneMatrix13, c2wMatrix));
+            Players->Left_Ankle.ScreenPos = WorldToScreen(Players->Left_Ankle.Pos, matrix, camera);
+			/*仿凯撒UI 圈钱死全家https://t.me/yaomuhan6*/
+            /* 右脚腕 */
+            FTransform Lrwtrans = getBone(Bone + 56 * 48);
+            FMatrix boneMatrix14 = TransformToMatrix(Lrwtrans);
+            Players->Right_Ankle.Pos = MarixToVector(MatrixMulti(boneMatrix14, c2wMatrix));
+            Players->Right_Ankle.ScreenPos = WorldToScreen(Players->Right_Ankle.Pos, matrix, camera);
+			
+			
+            			AddrCount ++; // 遍历人物数量
+		}
+		usleep(3000);
+	}
+}

@@ -1,0 +1,1808 @@
+
+#include <main.h>
+#include <GLES3/gl3.h>
+#include <ctgmath>
+#include <imgui_internal.h>
+#include <dirent.h>
+#include <stb_image.h>
+#include "namepath.h"
+#include "VecTool.h"
+#include "DrawTools.h"
+#include "Aim.h"
+#include "hook.h"
+#include "imgui_image.h"
+#include "Tools/shou.h"
+#include "globals.h"
+#include "native_surface/utils.h"
+#include <sys/utsname.h>
+
+float rectWidth = 100.0f;       // 初始矩形宽度
+float deltaWidth = 90.0f;   //矩形长度
+float minRectWidth = 100.0f;    // 最小宽度
+float maxRectWidth = 260.0f;    // 最大宽度
+float animationSpeed = 8.5f;    // 动画速度
+bool increasing;   // 宽度增加状态
+
+void updateRectAnimation() {
+    if (increasing) {
+        rectWidth += animationSpeed;
+        if (rectWidth > maxRectWidth) {
+            rectWidth = maxRectWidth;
+        }//增加
+    }else {
+        rectWidth -= animationSpeed;
+        if (rectWidth < minRectWidth) {
+            rectWidth = minRectWidth;
+          
+        }//减少
+    }
+}
+int Distance;
+int Health;
+
+char buffer[80];
+TextureInfo imageButton;
+TextureInfo offButton;
+TextureInfo onButton;
+TextureInfo robotpng;
+TextureInfo playerpng;
+static TextureInfo textureInfo;
+
+TextureInfo createTexture(const string &ImagePath) {
+    int w, h, n;
+    stbi_uc *data = stbi_load(ImagePath.c_str(), &w, &h, &n, 0);
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    
+    stbi_image_free(data);
+	
+    textureInfo.textureId = texture;
+    textureInfo.width = w;
+    textureInfo.height = h;
+    return textureInfo;
+}
+
+ImTextureID createTexturePNGFro(const unsigned char *buf,int len) {
+    int w, h, n;
+    stbi_uc *data = stbi_png_load_from_memory(buf, len, &w, &h, &n, 0);
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    if (n == 3) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    } else {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    }
+    stbi_image_free(data);
+    ImTextureID textureId = texture;
+    return textureId;
+}
+
+Vec2 WorldIsScreen(Vec3 obj, float matrix[16], float ViewW)
+{
+	float x =
+		(screen_x / 2) + (matrix[0] * obj.x + matrix[4] * obj.y + matrix[8] * obj.z + matrix[12]) / ViewW * (screen_x / 2);
+	float y =
+		(screen_y / 2) - (matrix[1] * obj.x + matrix[5] * obj.y + matrix[9] * obj.z + matrix[13]) / ViewW * (screen_y / 2);
+
+	return Vec2(x, y);
+}
+
+#define PI 3.14159265358979323846
+
+timer RenderingFPS;
+AimStruct Aim[100]; // 自瞄结构
+struct TempData Temp; // 对象结构
+struct TempData *temp; // 结构地址
+
+int PlayerId;
+int style_idx = 0;
+int style_zt = 0;
+int style_cd = 0;
+int style_zx = 0;
+int style_bw = 0;
+
+/* 定义自定义颜色 */
+ImColor TouchingColor = ImColor(255, 0, 0, 150);
+ImColor BoxColor = {1.0f,0.0f,0.0f,1.0f};
+ImColor BotBoxColor = ImColor(255,255,255,255);
+ImColor BoxblackColor = ImColor(255,0,0,25);
+ImColor BotBoxblackColor = ImColor(255,0,0,25);
+ImColor LineColor = ImColor(255,0,0,255);
+ImColor BotLineColor = ImColor(255,255,255,255);
+ImColor BoneColor = ImColor(255,0,0,255);
+ImColor BotBoneColor = ImColor(255,255,255,255);
+ImColor RightColor = ImColor(255,200,0,255);
+ImColor BotRightColor = ImColor(255,255,255,255);    
+ImColor WarningColor = ImColor(255,0,0,255);
+ImColor BotWarningColor = ImColor(255,255,255,255);    
+
+/* 定义自定义大小 */
+float BoxSize = 1.5f;
+float BotBoxSize = 1.5f;
+float LineSize = 1.5f;
+float BotLineSize = 1.5f;
+float BoneSize = 2.5f;
+float BotBoneSize = 2.5f;
+
+int show_ChildMenu = 0;
+bool DrawIo[50];
+float NumIo[50];
+bool isSetSize = false;
+
+FILE *numSave = nullptr;
+FILE *numSave2 = nullptr;
+long addr_src = 0;
+
+void NumIoSave(const char *name)
+{
+    if (numSave2 == nullptr) {
+        string SaveFile = "/data";
+        SaveFile += "/";
+        SaveFile += name;
+        numSave2 = fopen(SaveFile.c_str(), "wb+");
+    }
+    fseek(numSave2, 0, SEEK_SET);
+	fwrite(DrawIo, sizeof(bool) * 50, 1, numSave2);
+    fwrite(NumIo, sizeof(float) * 50, 1, numSave2);
+	fwrite(&BoxColor, sizeof(ImColor), 1, numSave2);
+    fwrite(&BotBoxColor, sizeof(ImColor), 1, numSave2);
+    fwrite(&LineColor, sizeof(ImColor), 1, numSave2);
+    fwrite(&BotLineColor, sizeof(ImColor), 1, numSave2);
+    fwrite(&BoneColor, sizeof(ImColor), 1, numSave2);
+    fwrite(&BotBoneColor, sizeof(ImColor), 1, numSave2);
+    fwrite(&RightColor, sizeof(ImColor), 1, numSave2);
+    fwrite(&BotRightColor, sizeof(ImColor), 1, numSave2);    
+	fwrite(&WarningColor, sizeof(ImColor), 1, numSave2);    
+	fwrite(&BotWarningColor, sizeof(ImColor), 1, numSave2); 
+	fwrite(&BoxSize, sizeof(float), 1, numSave2);
+    fwrite(&BotBoxSize, sizeof(float), 1, numSave2);
+    fwrite(&LineSize, sizeof(float), 1, numSave2);
+    fwrite(&BotLineSize, sizeof(float), 1, numSave2);
+    fwrite(&BoneSize, sizeof(float), 1, numSave2);
+    fwrite(&BotBoneSize, sizeof(float), 1, numSave2);
+	fwrite(&BoxblackColor, sizeof(ImColor), 1, numSave2);
+    fwrite(&BotBoxblackColor, sizeof(ImColor), 1, numSave2);
+    fflush(numSave2);
+    fsync(fileno(numSave2));
+}
+
+void NumIoLoad(const char *name)
+{
+    if (numSave2 == nullptr) {
+        string SaveFile = "/data";
+        SaveFile += "/";
+        SaveFile += name;
+        numSave2 = fopen(SaveFile.c_str(), "rb+");
+    }
+    if (numSave2 != nullptr) {
+        fseek(numSave2, 0, SEEK_SET);
+		fread(DrawIo, sizeof(bool) * 50, 1, numSave2);
+        fread(NumIo, sizeof(float) * 50, 1, numSave2);
+		fread(&BoxColor, sizeof(ImColor), 1, numSave2);
+        fread(&BotBoxColor, sizeof(ImColor), 1, numSave2);
+        fread(&LineColor, sizeof(ImColor), 1, numSave2);
+        fread(&BotLineColor, sizeof(ImColor), 1, numSave2);
+        fread(&BoneColor, sizeof(ImColor), 1, numSave2);
+        fread(&BotBoneColor, sizeof(ImColor), 1, numSave2);
+        fread(&RightColor, sizeof(ImColor), 1, numSave2);
+        fread(&BotRightColor, sizeof(ImColor), 1, numSave2);    
+		fread(&WarningColor, sizeof(ImColor), 1, numSave2);    
+		fread(&BotWarningColor, sizeof(ImColor), 1, numSave2);    		
+		fread(&BoxSize, sizeof(float), 1, numSave2);
+    	fread(&BotBoxSize, sizeof(float), 1, numSave2);
+    	fread(&LineSize, sizeof(float), 1, numSave2);
+    	fread(&BotLineSize, sizeof(float), 1, numSave2);
+    	fread(&BoneSize, sizeof(float), 1, numSave2);
+    	fread(&BotBoneSize, sizeof(float), 1, numSave2);
+		fread(&BoxblackColor, sizeof(ImColor), 1, numSave2);
+    	fread(&BotBoxblackColor, sizeof(ImColor), 1, numSave2);
+		if (NumIo[17] < 100.0f)
+			NumIo[17] = 400.0f;
+    } else {             
+		NumIo[1] = 300.0f;                                                  
+		NumIo[2] = 400.0f;
+ 	    NumIo[3] = 150.0f;
+ 	    NumIo[4] = 15.0f;
+  	    NumIo[6] = 1400.0f;
+    	NumIo[5] = 650.0f;
+    	NumIo[7] = 300.0f;  
+    	NumIo[8] = 0.0f;  
+    	NumIo[9] = 3.5f; 
+		NumIo[10] = 0.0f;  
+		NumIo[11] = 600.0f;
+		NumIo[12] = 90;
+		NumIo[13] = 0.0f;
+		NumIo[14] = 1.5f;
+		NumIo[15] = 0.0f;
+		NumIo[16] = 100.0f;
+		NumIo[17] = 400.0f;
+		NumIo[20] = 0.0f;
+		NumIo[21] = 0.0f;
+		NumIo[22] = 1.0f;
+    }
+}
+
+void CleanData() {
+	/* 定义自定义颜色 */
+    TouchingColor = ImColor(255, 0, 0, 150);
+    BoxColor = {1.0f,0.0f,0.0f,1.0f};
+    BotBoxColor = ImColor(255,255,255,255);
+    BoxblackColor = ImColor(255,0,0,25);
+    BotBoxblackColor = ImColor(255,0,0,25);
+    LineColor = ImColor(255,0,0,255);
+    BotLineColor = ImColor(255,255,255,255);
+    BoneColor = ImColor(255,0,0,255);
+    BotBoneColor = ImColor(255,255,255,255);
+    RightColor = ImColor(255,200,0,255);
+    BotRightColor = ImColor(255,255,255,255);    
+    WarningColor = ImColor(255,0,0,255);
+    BotWarningColor = ImColor(255,255,255,255);    
+
+	/* 定义自定义大小 */
+	BoxSize = 1.5f;
+	BotBoxSize = 1.5f;
+	LineSize = 1.5f;
+	BotLineSize = 1.5f;
+	BoneSize = 2.5f;
+	BotBoneSize = 2.5f;
+	
+	NumIo[1] = 300.0f;                       
+	NumIo[2] = 400.0f;
+    NumIo[3] = 150.0f;
+    NumIo[4] = 15.0f;
+    NumIo[6] = 1400.0f;
+	NumIo[5] = 650.0f;
+	NumIo[7] = 300.0f;  
+	NumIo[8] = 0.0f;  
+	NumIo[9] = 3.5f; 
+	NumIo[10] = 0.0f;  
+	NumIo[11] = 600.0f;
+	NumIo[12] = 90;
+	NumIo[13] = 0.0f;
+	NumIo[14] = 1.5f;
+	NumIo[15] = 0.0f;
+	NumIo[16] = 100.0f;
+	NumIo[17] = 400.0f;
+	NumIo[20] = 0.0f;
+	NumIo[21] = 0.0f;
+	NumIo[22] = 1.0f;
+}
+
+bool IsAimLongAim = false;
+char AimName[32];
+int Aimchoose = (int)NumIo[21];
+
+// 遍历自瞄对象
+int findminat()
+{
+    float min = NumIo[3];
+	float DistanceMin = NumIo[17];
+    int minAt = 999;
+    for (int i = 0; i < MaxPlayerCount; i++)
+    {
+		switch ((int)NumIo[21])
+        {
+            case 0:
+                if (IsAimLongAim) {
+					if (strcmp(Aim[i].Name, AimName) == 0)
+    				{           	
+        				minAt = i;
+    				}
+				} else {
+    				if (Aim[i].ScreenDistance < min)
+    				{
+						if (DrawIo[30]) {
+							strcpy(AimName, Aim[i].Name);
+						}
+        				min = Aim[i].ScreenDistance;
+        				minAt = i;
+    				}
+				}
+			break;
+			case 1:
+                if (IsAimLongAim) {
+					if (strcmp(Aim[i].Name, AimName) == 0)
+    				{           	
+        				minAt = i;
+    				}
+				} else {
+    				if (Aim[i].WodDistance < DistanceMin)
+    				{
+						if (DrawIo[30]) {
+							strcpy(AimName, Aim[i].Name);
+						}
+        				DistanceMin = Aim[i].WodDistance;
+        				minAt = i;
+					}
+    			}
+        	break;
+		}
+    }
+    if (minAt == 999)
+    {
+        Gmin = -1;
+		IsAimLongAim = false;
+        return -1;
+    }
+    Gmin = minAt;   
+    Aim[minAt].WodDistance;
+	if (DrawIo[30]) {
+		IsAimLongAim = true;
+	}
+    return minAt;
+}
+
+Vec2 vpvp;
+float fwjl = NumIo[3];
+
+// 自瞄线程
+void AimBotAuto()
+{   
+    bool isDown = false;
+    // 是否按下触摸
+	
+    double tx = NumIo[5], ty = NumIo[6];
+    // 触摸点位置
+
+    double ScreenX = screen_x, ScreenY = screen_y;
+    // 分辨率(竖屏)PS:滑屏用的坐标是竖屏状态下的
+
+    double ScrXH = ScreenX / 2.0f;
+    // 一半屏幕X
+
+    double ScrYH = ScreenY / 2.0f;
+    // 一半屏幕X
+
+    static float TargetX = 0;
+    static float TargetY = 0;
+    // 触摸目标位置
+	
+    Vec3 obj;
+    
+    float NowCoor[3];
+   
+    while (1)
+    {		
+		usleep(1000000 / 120);
+		
+		ImGuiIO& iooi = ImGui::GetIO();
+		
+		if (DrawIo[21] && iooi.MouseDown[0] && iooi.MousePos.x <= NumIo[6] + NumIo[7] && iooi.MousePos.y <= screen_y - NumIo[5] + NumIo[7] && iooi.MousePos.x >= NumIo[6] - NumIo[7] && iooi.MousePos.y >= screen_y - NumIo[5] - NumIo[7])
+        {           
+        	usleep(30000);      
+            if (DrawIo[21] && iooi.MouseDown[0] && iooi.MousePos.x <= NumIo[6] + NumIo[7] && iooi.MousePos.y <= screen_y - NumIo[5] + NumIo[7] && iooi.MousePos.x >= NumIo[6] - NumIo[7] && iooi.MousePos.y >= screen_y - NumIo[5] - NumIo[7])
+        	{
+           		while (DrawIo[21] && iooi.MouseDown[0] && iooi.MousePos.x <= NumIo[6] + NumIo[7] && iooi.MousePos.y <= screen_y - NumIo[5] + NumIo[7] && iooi.MousePos.x >= NumIo[6] - NumIo[7] && iooi.MousePos.y >= screen_y - NumIo[5] - NumIo[7])
+                {			
+    				NumIo[6] = iooi.MousePos.x;
+                    NumIo[5] = screen_y - iooi.MousePos.y;
+					TouchingColor = ImColor(0, 220, 0, 150);
+    				usleep(500);           				
+                }		
+				TouchingColor = ImColor(255, 0, 0, 150);
+            }
+        }
+		
+        if (!DrawIo[20])
+        {           
+			IsAimLongAim = false;
+	        if (isDown == true)
+            {
+				usleep(1000);
+                tx = NumIo[5], ty = NumIo[6];
+                // 恢复变量 
+                Touch_Up(6);
+                // 抬起
+                isDown = false;
+            }
+            usleep(NumIo[9] * 1000);
+            continue;
+        }
+        
+        findminat();
+        // 获取目标
+
+        if (Gmin == -1)
+        {          
+			IsAimLongAim = false;
+            if (isDown == true)
+            {
+				usleep(1000);
+                tx = NumIo[5], ty = NumIo[6];
+                // 恢复变量 
+                Touch_Up(6);
+                // 抬起
+                isDown = false;
+            }
+            usleep(NumIo[9] * 1000);
+            continue;
+        }
+		
+        float ToReticleDistance = Aim[Gmin].ScreenDistance;              
+        float FlyTime = Aim[Gmin].WodDistance / NumIo[11];
+        float DropM = 540.0f * FlyTime * FlyTime;
+        // 下坠
+                  
+	    NowCoor[0] = Aim[Gmin].ObjAim.x;
+        NowCoor[1] = Aim[Gmin].ObjAim.y;
+        NowCoor[2] = Aim[Gmin].ObjAim.z;
+        obj.x = NowCoor[0] + (Aim[Gmin].AimMovement.x * FlyTime*NumIo[22]);
+        obj.y = NowCoor[1] + (Aim[Gmin].AimMovement.y * FlyTime*NumIo[22]);
+        obj.z = NowCoor[2] + (Aim[Gmin].AimMovement.z * FlyTime*NumIo[22]) + DropM;
+		
+		if (temp->IsFiring == 1)
+			obj.z -= Aim[Gmin].WodDistance * NumIo[14] * GetWeaponId(temp->MyWeapon);
+		
+		float cameras = temp->matrix[3] * obj.x + temp->matrix[7] * obj.y + temp->matrix[11] * obj.z + temp->matrix[15]; 
+        
+        vpvp = WorldIsScreen(obj, temp->matrix, cameras);      
+		
+        zm_y = vpvp.x;     
+        zm_x = ScreenX - vpvp.y;        
+		float AimDs = sqrt(pow(screen_x / 2 - vpvp.x, 2) + pow(screen_y / 2 - vpvp.y, 2));
+		
+		if(DrawIo[25]&&DrawIo[20]&&temp->IsFiring==1)
+        {
+            fwjl = AimDs;
+            
+        }else{//没开镜恢复圈大小
+            fwjl = NumIo[3];
+        }
+		
+		float Aimspeace = NumIo[4];
+						
+        if (zm_x <= 0 || zm_x >= ScreenX || zm_y <= 0 || zm_y >= ScreenY)
+        {          
+			IsAimLongAim = false;
+            if (isDown == true)
+            {
+				usleep(1000);
+                tx = NumIo[5], ty = NumIo[6];
+                // 恢复变量 
+                Touch_Up(6);
+                // 抬起
+                isDown = false;
+            }
+            usleep(NumIo[9] * 1000);
+            continue;
+        }
+
+        if (ToReticleDistance <= NumIo[3] || AimDs <= NumIo[3])
+        {                                    
+            switch ((int)NumIo[0])
+            {
+                case 0:
+                    if (temp->IsFiring != 1)
+                    {
+						IsAimLongAim = false;
+                        if (isDown == true)
+                        {
+							usleep(1000);
+                            tx = NumIo[5], ty = NumIo[6];
+                            // 恢复变量
+                            Touch_Up(6);
+                            isDown = false;
+                        }                      
+                        usleep(NumIo[9] * 1000);
+                        continue;
+                    }
+                break;
+                case 1:
+                    if (temp->IsAiming != 256)
+                    {
+						IsAimLongAim = false;
+                        if (isDown == true)
+                        {
+							usleep(1000);
+                            tx = NumIo[5], ty = NumIo[6];
+                            // 恢复变量
+                            Touch_Up(6);
+                            isDown = false;
+                        }
+                        usleep(NumIo[9] * 1000);
+                        continue;
+                    }
+                break;
+                case 2:
+                    if (temp->IsFiring != 1 && temp->IsAiming != 256)
+                    {
+						IsAimLongAim = false;
+                        if (isDown == true)
+                        {
+							usleep(1000);
+                            tx = NumIo[5], ty = NumIo[6];
+                            // 恢复变量
+                            Touch_Up(6);
+                            isDown = false;
+                        }
+                        usleep(NumIo[9] * 1000);
+                        continue;
+                    }
+                break;
+				case 3:
+                    
+                break;
+            }
+			
+			float Acc = getScopeAcc((int)(90 / temp->Fov));
+			
+            if (isDown == false)
+            {
+				usleep(1000);
+				if (NumIo[10] == 0.0f)
+                	Touch_Down(6, (int)tx, (int)ty);
+				else
+					Touch_Down(6, screen_y - (int)tx, screen_x-(int)ty);
+                isDown = true;
+				usleep(1000);
+            }
+
+            if (zm_x > ScrXH) {
+                TargetX = -(ScrXH - zm_x) / NumIo[4] * Acc;
+                if (TargetX + ScrXH > ScrXH * 2) {
+                    TargetX = 0;
+                }
+            }
+            else if (zm_x < ScrXH) {
+                TargetX = (zm_x - ScrXH) / NumIo[4] * Acc;             
+                if (TargetX + ScrXH < 0) {
+                    TargetX = 0;
+                }
+            }
+            
+            if (zm_y > ScrYH) {
+                TargetY = -(ScrYH - zm_y) / NumIo[4] * Acc;              
+                if (TargetY + ScrYH > ScrYH * 2) {
+                    TargetY = 0;
+                }
+            }
+            else if (zm_y < ScrYH) {
+                TargetY = (zm_y - ScrYH) / NumIo[4] * Acc;              
+                if (TargetY + ScrYH < 0) {
+                    TargetY = 0;
+                }
+            }
+
+            if (TargetY >= 35 || TargetX >= 35 || TargetY <= -35 || TargetX <= -35)
+            {
+                if (isDown)
+                {
+					usleep(1000);
+                    tx = NumIo[5], ty = NumIo[6];
+                    // 恢复变量
+                    Touch_Up(6);
+                    isDown = false;
+                }
+                usleep(NumIo[9] * 1000);
+                continue;
+            }           		
+			
+            tx += TargetX;
+            ty += TargetY;		
+			
+            if (tx >= NumIo[5] + NumIo[7] || tx <= NumIo[5] - NumIo[7]
+                || ty >= NumIo[6] + NumIo[7] || ty <= NumIo[6] - NumIo[7])
+            {
+				usleep(1000);
+                // 只要滑屏达到了边界，直接还原至中心
+                tx = NumIo[5], ty = NumIo[6];
+                // 恢复变量
+                Touch_Up(6);
+                // 抬起          
+				usleep(3000);  
+				// 延迟
+				if (!NumIo[10])
+                	Touch_Down(6, (int)tx, (int)ty);
+			    else
+					Touch_Down(6, screen_y - (int)tx, screen_x - (int)ty);
+                // 按下           
+				isDown = true;
+				
+				tx += TargetX;
+            	ty += TargetY;		
+				
+				usleep(1000);
+            }         		     
+			
+			if (!NumIo[10])
+           		Touch_Move(6, (int)tx, (int)ty);
+		    else
+		    	Touch_Move(6, screen_y - (int)tx, screen_x - (int)ty);
+			
+			isDown = true;
+			
+			usleep(NumIo[9] * 1000);
+        } else {          
+			IsAimLongAim = false;
+            if (isDown)
+            {
+                tx = NumIo[5], ty = NumIo[6];
+                // 恢复变量 
+                Touch_Up(6);
+                // 抬起
+                isDown = false;
+				// 延时
+				usleep(NumIo[9] * 1000);
+            }
+        }      
+    }
+}
+
+
+
+int Pattern;
+void 内核版本(){
+struct utsname unameData;
+int result;
+result = uname(&unameData);
+if (result == 0) {
+printf((" 内核版本Kernel_version:%s"), unameData.release);
+}
+}
+
+//音量键悬浮窗
+int guodu=100;
+bool voice=true;
+void 开启(){
+if(voice==true)
+IsBall = true;
+while(guodu<1350&&voice==true){
+guodu=guodu+28;
+usleep(2500);
+}
+}
+
+int jishucount=0;
+void jishu(){
+while(1){
+jishucount+=1;
+usleep(500000);
+if(jishucount>100)
+jishucount=0;
+}
+usleep(1000);
+}
+
+int 数据() {
+    DIR *dir = opendir("/dev/input/");
+    dirent *ptr = NULL;
+    int count = 0;
+    while ((ptr = readdir(dir)) != NULL) {
+        if (strstr(ptr->d_name, "event"))
+            count++;
+    }
+    return count ? count : -1;
+}
+
+
+int 音量() {
+    int EventCount = 数据();
+    if (EventCount < 0) {
+        printf("未找到输入设备\n");
+        return -1;
+    }
+
+    int *fdArray = (int *)malloc(EventCount * sizeof(int));
+
+    for (int i = 0; i < EventCount; i++) {
+        char temp[128];
+        sprintf(temp, "/dev/input/event%d", i);
+        fdArray[i] = open(temp, O_RDWR | O_NONBLOCK);
+    }
+
+
+    input_event ev;
+    int count = 0; // 记录按下音量键的次数
+
+    while (1) {
+        for (int i = 0; i < EventCount; i++) {
+            memset(&ev, 0, sizeof(ev));
+            read(fdArray[i], &ev, sizeof(ev));
+            if (ev.type == EV_KEY && (ev.code == KEY_VOLUMEUP || ev.code == KEY_VOLUMEDOWN)) {
+              if (ev.code == 115&&ev.value==1) {//音量➕
+                    //这里放悬浮窗开启的函数
+                    voice = true;
+                    IsBall = true;
+                 //   bool kang = false;
+                } else if (ev.code == 114&&ev.value==1) {
+                    voice = false;
+                    //菜单 = false;
+                  //  bool kang = false;
+                   // bool
+                }  
+            }
+            usleep(1000);
+        }
+        usleep(500);
+    }
+       usleep(1500);
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    
+
+
+
+
+
+    printf("\033[32;1m");		// 绿色
+    //printf("请选择运行方式[输入序号]\n");
+    printf("\033[0m");	//白色
+    cout<<"0--------无后台\n1--------有后台\n2--------退出\n";
+    printf("请选择运行方式[输入序号]\n");
+    printf("\033[32;1m");		// 绿色
+    int wht=0;
+    cin>>wht;
+    if(wht==0){	
+    pid_t pid = fork();
+    if (pid > 0) {
+    exit(0);
+    } else if (pid == 0) {
+    printf("无后台成功\n");
+    } else {
+    fprintf(stderr, "创建失败\n");
+    exit(1);
+    }
+    }
+    bool flp;
+    pid_t nowpid = getpid();
+    char command[100];
+	string strbool;
+    cout << endl << "是否开启防录屏(0/1):";
+    cin >> strbool;
+	cout << endl;
+	if(strbool=="1")
+	flp=false;
+	else
+	flp=true;
+    screen_config();
+    init_screen_x = screen_x + screen_y;   
+    new std::thread(hack_thread);    
+    init_screen_x = screen_x + screen_y;
+    init_screen_y = screen_y + screen_x;
+	if (!init_egl(init_screen_x, init_screen_y,flp)) {
+        exit(0);
+    }
+
+    ImGui_init();
+    usleep(5000);
+    TouchScreenHandle();  // 监听
+    sleep(1);
+	
+	temp = tempRead;
+	
+	usleep(1000);
+	new std::thread(AimBotAuto);
+	usleep(1000);
+	new std::thread(音量);
+	usleep(1000);
+	NumIoLoad("FlyBlueSaveNum");
+	
+	RenderingFPS.SetFps(NumIo[12]);
+	RenderingFPS.AotuFPS_init();
+	RenderingFPS.setAffinity();
+	
+	ImGuiIO& io = ImGui::GetIO();
+	
+	ImGui_ImplOpenGL3_NewFrame();
+	glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+	
+    bool flag = true;
+    //帅哥();
+	sleep(1);
+	
+    while (flag) {
+        Rendering(&flag);    
+		RenderingFPS.SetFps(NumIo[12]);
+		RenderingFPS.AotuFPS();
+    }
+	
+    shutdown();
+	
+    return 0;
+    
+}
+
+ImColor BoneDrawColor;
+
+// 信息绘制函数
+void DrawHealth(Vec2 box, float w, float entityHealth, uint32_t TeamID, char* name)
+{
+    float cornerRadius = 9.5f; 
+    float x = box.x - (140 - w) / 2;
+    float y = box.y;
+    char TeamText[50];
+    sprintf(TeamText,  " %d·",TeamID);
+
+    //血量    
+    if (DrawIo[6]) {  
+    ImGui::GetBackgroundDrawList()->AddRect({x - 15, y - 23}, {x+152, y+5}, ImColor(0,0,0,255), cornerRadius); 
+    ImGui::GetBackgroundDrawList()->AddRectFilled({x - 14, y - 22}, {x - 10 + entityHealth * 150 / 93, y - 18 + 22},ImColor(arr[TeamID % length]), cornerRadius);
+}
+	
+    DrawTf.绘制字体描边(25,x-15, box.y-23, ImVec4{255,255,255,255}, TeamText);//队伍ID
+    DrawTf.绘制字体描边(25,x + 25, y - 23, ImVec4{255,255,255,255}, name);//玩家名称     
+}
+
+
+// 绘制骨骼函数
+void DrawBone(ImVec2 start, ImVec2 end, bool Cansee)
+{
+	if (Cansee) {
+		ImGui::GetForegroundDrawList()->AddLine(start, end, BoneDrawColor, {BoneSize});
+	} else if (!Cansee){
+		ImGui::GetForegroundDrawList()->AddLine(start, end, ImColor(0, 255, 0), {BotBoneSize});
+	}
+}
+
+
+void Draw3DBox(Vec3 object_position,Vec3 object_pass, Vec3 object_hand, float object_Angle, float box_width, ImColor BoxColor, float BoxSize, bool IsAi) {
+    Vec3 rotate_position[8];     // 存储旋转变换8个点坐标
+    Vec2 object_point[8];          // 对象屏幕坐标                                        
+
+	/* 下_左上 */
+    rotate_position[0].x = object_position.x + box_width * (float)sin((object_Angle + 45) * M_PI / 180);
+    rotate_position[0].y = object_position.y + box_width * (float)cos((object_Angle + 45) * M_PI / 180);
+    rotate_position[0].z = object_pass.z;
+	
+	/* 下_左下 */
+	rotate_position[1].x = object_position.x + box_width * (float)sin((object_Angle + 135) * M_PI / 180);
+    rotate_position[1].y = object_position.y + box_width * (float)cos((object_Angle + 135) * M_PI / 180);
+    rotate_position[1].z = object_pass.z;
+	
+	/* 下_右下 */
+	rotate_position[2].x = object_position.x + box_width * (float)sin((object_Angle + 225) * M_PI / 180);
+    rotate_position[2].y = object_position.y + box_width * (float)cos((object_Angle + 225) * M_PI / 180);
+    rotate_position[2].z = object_pass.z;
+	
+	/* 下_右上 */
+	rotate_position[3].x = object_position.x + box_width * (float)sin((object_Angle + 315) * M_PI / 180);
+    rotate_position[3].y = object_position.y + box_width * (float)cos((object_Angle + 315) * M_PI / 180);
+    rotate_position[3].z = object_pass.z;
+	
+	
+	/* 上_左上 */
+    rotate_position[4].x = object_position.x + box_width * (float)sin((object_Angle + 45) * M_PI / 180);
+    rotate_position[4].y = object_position.y + box_width * (float)cos((object_Angle + 45) * M_PI / 180);
+    rotate_position[4].z = object_hand.z + 10;
+	
+	/* 上_左下 */
+	rotate_position[5].x = object_position.x + box_width * (float)sin((object_Angle + 135) * M_PI / 180);
+    rotate_position[5].y = object_position.y + box_width * (float)cos((object_Angle + 135) * M_PI / 180);
+    rotate_position[5].z = object_hand.z + 10;
+	
+	/* 上_右下 */
+	rotate_position[6].x = object_position.x + box_width * (float)sin((object_Angle + 225) * M_PI / 180);
+    rotate_position[6].y = object_position.y + box_width * (float)cos((object_Angle + 225) * M_PI / 180);
+    rotate_position[6].z = object_hand.z + 10;
+	
+	/* 上_右上 */
+	rotate_position[7].x = object_position.x + box_width * (float)sin((object_Angle + 315) * M_PI / 180);
+    rotate_position[7].y = object_position.y + box_width * (float)cos((object_Angle + 315) * M_PI / 180);
+    rotate_position[7].z = object_hand.z + 10;
+	
+	/* 遍历坐标数组转换屏幕坐标 */
+	for (int i = 0 ; i < 8 ; i ++) {
+		float cameras = temp->matrix[3] * rotate_position[i].x + temp->matrix[7] * rotate_position[i].y + temp->matrix[11] * rotate_position[i].z + temp->matrix[15]; 
+		object_point[i] = WorldIsScreen(rotate_position[i], temp->matrix, cameras);
+	}
+	
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[0].x, object_point[0].y}, {object_point[3].x, object_point[3].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[1].x, object_point[1].y}, {object_point[2].x, object_point[2].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[0].x, object_point[0].y}, {object_point[1].x, object_point[1].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[3].x, object_point[3].y}, {object_point[2].x, object_point[2].y}, BoxColor, {BoxSize});
+	
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[4].x, object_point[4].y}, {object_point[7].x, object_point[7].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[5].x, object_point[5].y}, {object_point[6].x, object_point[6].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[4].x, object_point[4].y}, {object_point[5].x, object_point[5].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[7].x, object_point[7].y}, {object_point[6].x, object_point[6].y}, BoxColor, {BoxSize});
+	
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[0].x, object_point[0].y}, {object_point[4].x, object_point[4].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[1].x, object_point[1].y}, {object_point[5].x, object_point[5].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[2].x, object_point[2].y}, {object_point[6].x, object_point[6].y}, BoxColor, {BoxSize});
+	ImGui::GetBackgroundDrawList()->AddLine({object_point[3].x, object_point[3].y}, {object_point[7].x, object_point[7].y}, BoxColor, {BoxSize});
+	
+	if (IsAi) {
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[0].x, object_point[0].y}, {object_point[4].x, object_point[4].y}, {object_point[5].x, object_point[5].y}, {object_point[1].x, object_point[1].y}, BotBoxblackColor);
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[3].x, object_point[3].y}, {object_point[7].x, object_point[7].y}, {object_point[2].x, object_point[2].y}, {object_point[6].x, object_point[6].y}, BotBoxblackColor);
+	
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[0].x, object_point[0].y}, {object_point[4].x, object_point[4].y}, {object_point[7].x, object_point[7].y}, {object_point[3].x, object_point[3].y}, BotBoxblackColor);
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[1].x, object_point[1].y}, {object_point[5].x, object_point[5].y}, {object_point[6].x, object_point[6].y}, {object_point[2].x, object_point[2].y}, BotBoxblackColor);
+	
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[0].x, object_point[0].y}, {object_point[1].x, object_point[1].y}, {object_point[2].x, object_point[2].y}, {object_point[3].x, object_point[3].y}, BotBoxblackColor);
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[4].x, object_point[4].y}, {object_point[5].x, object_point[5].y}, {object_point[6].x, object_point[6].y}, {object_point[7].x, object_point[7].y}, BotBoxblackColor);
+	} else {
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[0].x, object_point[0].y}, {object_point[4].x, object_point[4].y}, {object_point[5].x, object_point[5].y}, {object_point[1].x, object_point[1].y}, BotBoxblackColor);
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[3].x, object_point[3].y}, {object_point[7].x, object_point[7].y}, {object_point[2].x, object_point[2].y}, {object_point[6].x, object_point[6].y}, BotBoxblackColor);
+	
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[0].x, object_point[0].y}, {object_point[4].x, object_point[4].y}, {object_point[7].x, object_point[7].y}, {object_point[3].x, object_point[3].y}, BotBoxblackColor);
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[1].x, object_point[1].y}, {object_point[5].x, object_point[5].y}, {object_point[6].x, object_point[6].y}, {object_point[2].x, object_point[2].y}, BotBoxblackColor);
+	
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[0].x, object_point[0].y}, {object_point[1].x, object_point[1].y}, {object_point[2].x, object_point[2].y}, {object_point[3].x, object_point[3].y}, BotBoxblackColor);
+		ImGui::GetBackgroundDrawList()->AddQuadFilled({object_point[4].x, object_point[4].y}, {object_point[5].x, object_point[5].y}, {object_point[6].x, object_point[6].y}, {object_point[7].x, object_point[7].y}, BotBoxblackColor);
+	}
+}
+
+// 绘图主函数
+void Draw_Main(ImDrawList *Draw)
+{
+	float top, right, left, bottom, top1; 
+	int PlayerCount = 0, BotCount = 0;
+	
+	AimCount = 0;
+	
+	
+	
+	
+	// 自瞄圈圈
+    if (DrawIo[20] && temp->IsFiring == 1 && DrawIo[25]&&Gmin != -1)       
+    {    
+		Draw->AddCircle({screen_x / 2, screen_y / 2}, fwjl, ImColor(0,255,0,255), 0, 1.0f);
+	}else if(DrawIo[20]){
+        Draw->AddCircle({screen_x / 2, screen_y / 2}, NumIo[3], ImColor(0,255,0,255), 0, 1.0f);     
+    }
+	
+	if (DrawIo[44] && Gmin != -1)
+    {   
+		Draw->AddLine({screen_x / 2, screen_y / 2}, {vpvp.x, vpvp.y}, ImColor(0,255,0,255), 2.5f);
+	}
+		
+	// 触摸区域
+	if (DrawIo[21])
+    {	
+        std::string ssf;  
+        ssf += "勿放控件，长按拖动";
+        auto textSize = ImGui::CalcTextSize(ssf.c_str(), 0, 32);
+		Draw->AddRectFilled({0,0}, {screen_x, screen_y},ImColor(0,0,0,110));    
+        Draw->AddRectFilled({NumIo[6] - NumIo[7] / 2, screen_y - NumIo[5] + NumIo[7] / 2}, {NumIo[6] + NumIo[7] / 2, screen_y - NumIo[5] - NumIo[7] / 2}, TouchingColor); 
+		Draw->AddText(NULL, 32, {NumIo[6] - (textSize.x / 2), screen_y - NumIo[5]}, ImColor(255, 255, 255), ssf.c_str());                                                   
+    }
+	
+	float aa;
+	float bb;
+	
+	// 雷达背景
+    if (DrawIo[7]){
+        Draw->AddCircleFilled({NumIo[1],NumIo[2]},150,ImColor(255,255,255,30));
+        Draw->AddCircle({NumIo[1], NumIo[2]}, 150,ImColor(255, 255, 255));
+        Draw->AddCircle({NumIo[1], NumIo[2]}, 60,ImColor(255,0,0,255));
+        Draw->AddLine({NumIo[1]+150, NumIo[2]}, {NumIo[1]-150, NumIo[2]}, ImColor(255, 255, 255), 2);
+        Draw->AddLine({NumIo[1], NumIo[2]+150}, {NumIo[1], NumIo[2]}, ImColor(255, 255, 255), 2);
+        Draw->AddLine({NumIo[1], NumIo[2]}, {NumIo[1]-106, NumIo[2]-106}, ImColor(255,0,0,255), 2);
+        Draw->AddLine({NumIo[1], NumIo[2]}, {NumIo[1]+106, NumIo[2]-106}, ImColor(255,0,0,255), 2);
+    }
+	
+	for (int i = 0; i < temp->mPlayerArray.Count; i ++)
+	{
+	Distance = temp->mPlayerArray.mPlayer[i].Distance;
+    Health = temp->mPlayerArray.mPlayer[i].Health;
+		if (temp->mPlayerArray.mPlayer[i].Distance > NumIo[17])
+			continue;		
+			
+		Vec2 Radar = {(temp->MyPos.x - temp->mPlayerArray.mPlayer[i].Pos.x) / NumIo[16], (temp->MyPos.y - temp->mPlayerArray.mPlayer[i].Pos.y) / NumIo[16]};
+			
+		if (NumIo[46] == 0) {
+        if (DrawIo[7]) {
+        // 雷达
+        float middlex = Radar.y;
+        Radar.y = -Radar.x;
+        Radar.x = middlex;
+        float sina = -Radar.y / sqrt(Radar.x * Radar.x + Radar.y * Radar.y);
+        float cosa = -Radar.x / sqrt(Radar.x * Radar.x + Radar.y * Radar.y);
+        float xiebian = sqrt(temp->matrix[7] * temp->matrix[7] + temp->matrix[3] * temp->matrix[3]);
+        float sinb = temp->matrix[7] / xiebian;
+        float cosb = temp->matrix[3] / xiebian;
+        float dis = sqrt(Radar.x * Radar.x + Radar.y * Radar.y);
+
+        float sinab = sina * cosb - sinb * cosa;
+        float cosab = cosa * cosb + sina * sinb;
+        aa = sinb;
+        bb = cosb;
+
+        Radar.x = dis * cosab;
+        Radar.y = dis * sinab;
+
+        if ((Radar.x) * (Radar.x) + (Radar.y) * (Radar.y) <= 40000) {
+            if (temp->mPlayerArray.mPlayer[i].IsBot) {
+                Draw->AddCircleFilled({NumIo[1] + Radar.x, NumIo[2] + Radar.y}, 3, ImColor(255, 255, 255)); // 修改圆圈点颜色和大小
+            } else {
+                tm = 150.f / 255.f;
+                Draw->AddCircleFilled({NumIo[1] + Radar.x, NumIo[2] + Radar.y}, 15, ImColor(arr[temp->mPlayerArray.mPlayer[i].TeamID % length]));
+                string sdt = to_string((int)temp->mPlayerArray.mPlayer[i].TeamID);
+                auto textSize = ImGui::CalcTextSize(sdt.c_str(), 0, 25);
+                Draw->AddText(NULL, 25, {NumIo[1] + Radar.x - textSize.x / 2, NumIo[2] + Radar.y - textSize.y * 0.45}, ImColor(255, 255, 255), sdt.c_str());
+            }
+        }
+    }
+}
+			
+		    //倒地不绘制
+			if(DrawIo[16])
+            {
+            //判断是否倒地
+            if (temp->mPlayerArray.mPlayer[i].Health <= 0)
+            {
+               continue;
+            }
+         }
+            //人机不绘制
+            if(DrawIo[17])
+            {
+           // 是否为人机
+            if (temp->mPlayerArray.mPlayer[i].IsBot == 1)
+            {
+             continue;
+            }
+         }
+			
+		if (temp->mPlayerArray.mPlayer[i].w > 0 && temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x > 0 && temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x < screen_x && temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y > 0 && temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y < screen_y)
+		{		
+			if(DrawIo[20]&&((DrawIo[31]&&!temp->mPlayerArray.mPlayer[i].IsBot)||!DrawIo[31])&&((DrawIo[32]&&temp->mPlayerArray.mPlayer[i].Health>0)||!DrawIo[32]))
+            {              
+				strcpy(Aim[AimCount].Name, temp->mPlayerArray.mPlayer[i].PlayerName);
+            	Aim[AimCount].WodDistance = temp->mPlayerArray.mPlayer[i].Distance;   
+                Aim[AimCount].AimMovement = temp->mPlayerArray.mPlayer[i].Predict;
+				if (NumIo[8] == 1.0){                                 
+                    Aim[AimCount].ObjAim = temp->mPlayerArray.mPlayer[i].Head.Pos;                            
+                    Aim[AimCount].ScreenDistance = sqrt(pow(screen_x / 2 - temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x, 2) + pow(screen_y / 2 - temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y, 2));
+                } else if (NumIo[8] == 2.0){                                 
+                    Aim[AimCount].ObjAim = temp->mPlayerArray.mPlayer[i].Chest.Pos;                            
+                    Aim[AimCount].ScreenDistance = sqrt(pow(screen_x / 2 - temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.x, 2) + pow(screen_y / 2 - temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.y, 2));
+                } else if (NumIo[8] == 3.0){                                 
+                    Aim[AimCount].ObjAim = temp->mPlayerArray.mPlayer[i].Pelvis.Pos;                                                 
+                    Aim[AimCount].ScreenDistance = sqrt(pow(screen_x / 2 - temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.x, 2) + pow(screen_y / 2 - temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.y, 2));
+                } else {
+					Aim[AimCount].ObjAim = temp->mPlayerArray.mPlayer[i].Head.Pos;                            
+                    Aim[AimCount].ScreenDistance = sqrt(pow(screen_x / 2 - temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x, 2) + pow(screen_y / 2 - temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y, 2));
+				}           
+                AimCount++;
+            }
+            
+			left  = temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x - temp->mPlayerArray.mPlayer[i].w * 0.6;
+            right = temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x + temp->mPlayerArray.mPlayer[i].w * 0.6;
+			
+			if (!temp->mPlayerArray.mPlayer[i].Head.Pos.x) {
+				top1 = temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.y - temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.y;
+			} else {
+				top1 = temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.y - temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y;
+			}
+			
+            top  = temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.y - top1 - temp->mPlayerArray.mPlayer[i].w / 5;    
+            
+            if (temp->mPlayerArray.mPlayer[i].Left_Ankle.ScreenPos.y < temp->mPlayerArray.mPlayer[i].Right_Ankle.ScreenPos.y) {
+                bottom = temp->mPlayerArray.mPlayer[i].Right_Ankle.ScreenPos.y + temp->mPlayerArray.mPlayer[i].w / 10;
+            } else {
+                bottom = temp->mPlayerArray.mPlayer[i].Left_Ankle.ScreenPos.y  + temp->mPlayerArray.mPlayer[i].w / 10;
+            }		
+			
+			if (DrawIo[1]) {
+				// 方框
+				float box_width = 0;
+				float box_width_1 = fabs(temp->mPlayerArray.mPlayer[i].Left_Shoulder.Pos.x - temp->mPlayerArray.mPlayer[i].Right_Shoulder.Pos.x) + fabs(temp->mPlayerArray.mPlayer[i].Left_Shoulder.Pos.y - temp->mPlayerArray.mPlayer[i].Right_Shoulder.Pos.y);
+				float box_width_2 = fabs(temp->mPlayerArray.mPlayer[i].Left_Ankle.Pos.x - temp->mPlayerArray.mPlayer[i].Head.Pos.x) + fabs(temp->mPlayerArray.mPlayer[i].Left_Ankle.Pos.y - temp->mPlayerArray.mPlayer[i].Head.Pos.y);
+				float box_width_3 = fabs(temp->mPlayerArray.mPlayer[i].Pelvis.Pos.x - temp->mPlayerArray.mPlayer[i].Head.Pos.x) + fabs(temp->mPlayerArray.mPlayer[i].Pelvis.Pos.y - temp->mPlayerArray.mPlayer[i].Head.Pos.y);				
+				Vec3 Pass = Vec3();
+				if (temp->mPlayerArray.mPlayer[i].Left_Ankle.Pos.z > temp->mPlayerArray.mPlayer[i].Right_Ankle.Pos.z) {
+					Pass = temp->mPlayerArray.mPlayer[i].Left_Ankle.Pos;
+				} else {
+					Pass = temp->mPlayerArray.mPlayer[i].Right_Ankle.Pos;
+				}
+				if (box_width_3 > box_width_1) {
+					box_width = box_width_2;
+				} else {
+					box_width = box_width_1;
+				}
+				if (NumIo[15]) {
+					if (temp->mPlayerArray.mPlayer[i].IsBot) {                
+						Draw3DBox(temp->mPlayerArray.mPlayer[i].Pos, Pass, temp->mPlayerArray.mPlayer[i].Head.Pos, 0, 10 + box_width, BotBoxColor, BotBoxSize, true);
+					} else {
+						Draw3DBox(temp->mPlayerArray.mPlayer[i].Pos, Pass, temp->mPlayerArray.mPlayer[i].Head.Pos, 0, 10 + box_width, BoxColor, BoxSize, false);
+					}
+				} else {
+                	if (temp->mPlayerArray.mPlayer[i].IsBot) {                
+						Draw->AddRect({left, top}, {right, bottom}, BotBoxColor, {0}, 0, {BotBoxSize});          			
+						//Draw->AddRectFilled({left, top}, {right, bottom}, BotBoxblackColor);          				
+                	} else {                       
+                    	Draw->AddRect({left, top}, {right, bottom}, BoxColor, {0}, 0, {BoxSize});       
+						//Draw->AddRectFilled({left, top}, {right, bottom}, BoxblackColor);          				
+                	}        
+				}
+            }
+            
+            if (DrawIo[2]) {
+                // 射线
+                if (temp->mPlayerArray.mPlayer[i].IsBot)
+                {
+                    Draw->AddLine({screen_x / 2 , 0}, {temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y}, BotLineColor, {BotLineSize});  
+                }else{
+                    Draw->AddLine({screen_x / 2 , 0}, {temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y}, LineColor, {LineSize});  
+                }
+            }
+			
+			if (DrawIo[3]) {
+				if (temp->mPlayerArray.mPlayer[i].IsBot) {
+					BoneDrawColor = BotBoneColor;
+				} else {
+					BoneDrawColor = BoneColor;
+				}
+                // 骨骼
+				if (temp->mPlayerArray.mPlayer[i].Head.CanSee) {
+                	Draw->AddCircle({temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].w / 14, BoneColor, BoneSize);    
+				} else {
+					Draw->AddCircle({temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].w / 14, ImColor(0,255,0,255), BotBoneSize);    
+				}
+                DrawBone({temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Chest.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Pelvis.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Left_Shoulder.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Shoulder.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Left_Shoulder.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Right_Shoulder.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Shoulder.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Right_Shoulder.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Left_Shoulder.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Shoulder.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Left_Elbow.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Elbow.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Left_Elbow.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Right_Shoulder.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Shoulder.ScreenPos.y},{temp->mPlayerArray.mPlayer[i].Right_Elbow.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Elbow.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Right_Elbow.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Left_Elbow.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Elbow.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Left_Wrist.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Wrist.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Left_Wrist.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Right_Elbow.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Elbow.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Right_Wrist.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Wrist.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Right_Wrist.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Left_Thigh.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Thigh.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Left_Thigh.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Right_Thigh.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Thigh.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Right_Thigh.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Left_Thigh.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Thigh.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Left_Knee.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Knee.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Left_Knee.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Right_Thigh.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Thigh.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Right_Knee.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Knee.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Right_Knee.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Left_Knee.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Knee.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Left_Ankle.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Ankle.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Left_Ankle.CanSee);
+                DrawBone({temp->mPlayerArray.mPlayer[i].Right_Knee.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Knee.ScreenPos.y}, {temp->mPlayerArray.mPlayer[i].Right_Ankle.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Ankle.ScreenPos.y}, temp->mPlayerArray.mPlayer[i].Right_Ankle.CanSee);                                  
+            }
+            
+            if(DrawIo[4])
+            {  
+   	            Draw->AddLine(ImVec2(screen_x-NumIo[18],screen_x),ImVec2(screen_x+NumIo[18],screen_x),IM_COL32(255,0,0,255),4);
+                Draw->AddLine(ImVec2(screen_x,screen_x-NumIo[18]),ImVec2(screen_x,screen_x+NumIo[18]),IM_COL32(215,3,0,255),4);
+            }
+            if(DrawIo[4]){
+				float kkkkk=40/(temp->mPlayerArray.mPlayer[i].Distance+1);
+			 //Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Head.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Chest.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.x , temp->mPlayerArray.mPlayer[i].Pelvis.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Left_Shoulder.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Shoulder.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Right_Shoulder.ScreenPos.x , temp->mPlayerArray.mPlayer[i].Right_Shoulder.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Left_Elbow.ScreenPos.x , temp->mPlayerArray.mPlayer[i].Left_Elbow.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Right_Elbow.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Elbow.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Left_Wrist.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Wrist.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Right_Wrist.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Wrist.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Right_Thigh.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Thigh.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Left_Thigh.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Thigh.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Left_Knee.ScreenPos.x , temp->mPlayerArray.mPlayer[i].Left_Knee.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Right_Knee.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Right_Knee.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Left_Ankle.ScreenPos.x, temp->mPlayerArray.mPlayer[i].Left_Ankle.ScreenPos.y}, kkkkk,BoneColor );    
+			 Draw->AddCircleFilled({temp->mPlayerArray.mPlayer[i].Right_Ankle.ScreenPos.x , temp->mPlayerArray.mPlayer[i].Right_Ankle.ScreenPos.y}, kkkkk,BoneColor );    
+}
+			
+			if (DrawIo[4] || DrawIo[6]) {
+				// 信息
+				if (!temp->mPlayerArray.mPlayer[i].IsBot) {
+					DrawHealth({temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x - temp->mPlayerArray.mPlayer[i].w, top - 10}, temp->mPlayerArray.mPlayer[i].w * 2, temp->mPlayerArray.mPlayer[i].Health, temp->mPlayerArray.mPlayer[i].TeamID, temp->mPlayerArray.mPlayer[i].PlayerName);
+				} else {
+					DrawHealth({temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x - temp->mPlayerArray.mPlayer[i].w, top - 10}, temp->mPlayerArray.mPlayer[i].w * 2, temp->mPlayerArray.mPlayer[i].Health, temp->mPlayerArray.mPlayer[i].TeamID, "  ·AI");
+				}
+			}
+			
+			if (DrawIo[10])
+			{
+              std::string s;
+              s += GetHol(temp->mPlayerArray.mPlayer[i].scwq);
+              s += "  ";
+              s += to_string((int)temp->mPlayerArray.mPlayer[i].dqzd);
+              s += "/";
+              s += to_string((int)temp->mPlayerArray.mPlayer[i].zdmax);
+              PlayerId = temp->mPlayerArray.mPlayer[i].scwq;
+              auto textSize = ImGui::CalcTextSize(s.c_str(), 0, 15);
+              ImGui::GetForegroundDrawList()->AddText(NULL, 22.f, { temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x - 80, top - 53 }, ImColor(255, 255, 0), s.c_str());			  
+			}
+						
+			if(DrawIo[15]){
+            // 状态
+	        std::string s;      
+            s += "";
+            s += dzdz(temp->mPlayerArray.mPlayer[i].Dzid);
+            PlayerId = temp->mPlayerArray.mPlayer[i].Dzid;
+            auto textSize = ImGui::CalcTextSize(s.c_str(), 0, 25);
+		    ImGui::GetForegroundDrawList()->AddText(NULL, 22.f, {temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x-80, top - 70}, ImColor(255, 255, 0), s.c_str());      
+            }			
+			
+			if (DrawIo[5]) {
+            	// 距离
+				string str = to_string((int) temp->mPlayerArray.mPlayer[i].Distance);    
+				str += " m";
+				const char* s = str.c_str();			
+				DrawTf.DrawStrokeText(temp->mPlayerArray.mPlayer[i].Head.ScreenPos.x - strlen(s) - temp->mPlayerArray.mPlayer[i].w / 2, bottom + 15, ImVec4{255.f/255.f,200.f/255.f,0.f/255.f,255.f/255.f}, s);
+            }		
+		} else {
+			if (DrawIo[8]) {             
+				tm = 120.f/255.f;
+				float cameras = temp->matrix[3] * temp->mPlayerArray.mPlayer[i].Pos.x + temp->matrix[7] * temp->mPlayerArray.mPlayer[i].Pos.y + temp->matrix[11] * temp->mPlayerArray.mPlayer[i].Pos.z + temp->matrix[15]; 
+				if (!temp->mPlayerArray.mPlayer[i].IsBot) {				
+					OffScreen(temp->mPlayerArray.mPlayer[i].ScreenPos, cameras, ImColor(arr[temp->mPlayerArray.mPlayer[i].TeamID%length]), NumIo[3] + 20 + temp->mPlayerArray.mPlayer[i].Distance * 0.3);
+				} else {
+					OffScreen(temp->mPlayerArray.mPlayer[i].ScreenPos, cameras, ImColor(255, 255, 255, 255), NumIo[3] + 20 + temp->mPlayerArray.mPlayer[i].Distance * 0.3);
+				}
+            }
+		}
+		
+		if (temp->mPlayerArray.mPlayer[i].IsBot) {
+			BotCount ++;
+		} else {
+			PlayerCount ++;
+		}
+	}
+		
+	char *CasName;
+	for (int i = 0; i < temp->mwuziArray.Count; i++)
+	{
+	        if (temp->mwuziArray.mwuzi[i].w>0){
+            if (DrawIo[12]&&baozinb(temp->mwuziArray.mwuzi[i].wuziName, &CasName)) {                  
+            string name;
+            name += CasName;
+            if(temp->mwuziArray.mwuzi[i].Distance<60){
+            name += "[";
+            name += std::to_string((int)temp->mwuziArray.mwuzi[i].Distance);
+            name += "米]";
+            auto textSize = ImGui::CalcTextSize(name.c_str(),0, 20);
+            Draw->AddText(NULL, 20,{temp->mwuziArray.mwuzi[i].ScreenPos.x-(textSize.x / 2), temp->mwuziArray.mwuzi[i].ScreenPos.y}, ImColor(255, 255, 255, 255), name.c_str());  
+         }
+         }
+         
+         if (DrawIo[11]&&GetVehicleInfo(temp->mwuziArray.mwuzi[i].wuziName, &CasName)) {                  
+            string name;
+            name += CasName;
+            name += "[";
+            name += std::to_string((int)temp->mwuziArray.mwuzi[i].Distance);
+            name += "米]";
+            auto textSize = ImGui::CalcTextSize(name.c_str(),0, 20);
+            Draw->AddText(NULL, 20,{temp->mwuziArray.mwuzi[i].ScreenPos.x-(textSize.x / 2), temp->mwuziArray.mwuzi[i].ScreenPos.y}, ImColor(255, 255, 255, 255), name.c_str());                
+            }
+         
+         if (DrawIo[14]&&GetGrenadeInfo(temp->mwuziArray.mwuzi[i].wuziName, &CasName)) {                  
+            string name;
+            name += CasName;
+            if(temp->mwuziArray.mwuzi[i].Distance<50){
+            name += "[";
+            name += std::to_string((int)temp->mwuziArray.mwuzi[i].Distance);
+            name += "米]";
+            auto textSize = ImGui::CalcTextSize(name.c_str(),0, 20);
+            Draw->AddText(NULL, 20,{temp->mwuziArray.mwuzi[i].ScreenPos.x-(textSize.x / 2), temp->mwuziArray.mwuzi[i].ScreenPos.y}, ImColor(255, 0, 0, 255), name.c_str());  
+            }
+            }
+	}
+}
+
+	MaxPlayerCount = AimCount;
+	
+	//绘制人数
+bool shouldExpand = PlayerCount + BotCount > 0;
+updateRectAnimation();
+
+    if (!shouldExpand) {
+        float left = screen_x / 2 - rectWidth / 2 - deltaWidth;
+        float right = screen_x / 2 + rectWidth / 2 + deltaWidth;
+        Draw->AddRectFilled({left, 30}, {right, 120}, ImColor(0, 255, 255, 120), {60});
+        
+        string str = " 400M SAFE";
+        // 将文本的 X 坐标向右移动 20 个单位
+        Draw->AddText(NULL, 42, {screen_x / 2 - 137 + 30, 55}, ImColor(255, 255, 255), str.c_str());
+
+
+    
+    
+    } else {
+        // 有玩家或机器人，显示玩家和机器人数量
+        string str = to_string(PlayerCount) + to_string(BotCount);
+        auto textSizes = ImGui::CalcTextSize(str.c_str(), 0, 35);
+
+        // 调整左右边界
+        float left = screen_x / 2 - rectWidth / 2 - deltaWidth;
+        float right = screen_x / 2 + rectWidth / 2 + deltaWidth;
+
+        Draw->AddRectFilled({left, 30}, {right, 120}, ImColor(0, 255, 255, 120), {60});
+       
+        
+            // 绘制完全透明的矩形
+Draw->AddRectFilled({screen_x / 2 - 90, 30}, {screen_x / 2 + 90, 120}, ImColor(0, 255, 255, 0), {60});
+// 继续绘制文本
+Draw->AddText(NULL, 42, ImVec2(screen_x / 2 - 60, 55), ImColor(255, 0, 0, 255), to_string(PlayerCount).c_str()); // 真人
+Draw->AddText(NULL, 42, ImVec2(screen_x / 2 + 42, 55), ImColor(255, 255, 255, 255), to_string(BotCount).c_str()); // 人机
+
+if (Gmin != -1) {
+increasing = true;
+			//auto Players = TempDraw.mPlayerArray.mPlayer[Aim_At]
+           		string str = to_string((int) Distance);    
+				str += "米";
+				const char* s = str.c_str();			
+				Draw->AddText(NULL, 42, ImVec2( 2 + 1100, 55), ImColor(255, 200, 0, 255), s); // 人物距离
+				
+				
+		string str1 = to_string((int) Health);    
+		str += "";
+				const char* s1 = str1.c_str();			
+				Draw->AddText(NULL, 42, ImVec2( 2 + 1445, 55), ImColor(255, 200, 0, 255), s1); // 血量
+          
+} else {
+increasing = false;
+}
+}
+}
+
+// 渲染主函数
+void Rendering(bool *flag) 
+{
+	温迪();
+    ImGuiIO& io = ImGui::GetIO();
+	ImGuiStyle & Style = ImGui::GetStyle();
+    if (display == EGL_NO_DISPLAY) {
+        return;
+    }
+    ImGui_ImplAndroid_NewFrame(init_screen_x, init_screen_y);
+	
+    ImGui::NewFrame();
+	
+	Draw_Main(ImGui::GetForegroundDrawList());
+	
+	if(IsBall)
+    {
+		Style.WindowRounding = 10.0f;
+            if (ImGui::Begin("测试", &MemuSwitch, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar))
+            {
+                if(guodu<1000&&voice){
+		    	guodu=guodu+28;
+                }
+                if(!voice){
+		    	guodu=guodu-28;
+                }
+			    if (!isSetSize||!voice) {
+    			ImGui::SetWindowSize({guodu, 700});
+				isSetSize = !(guodu<1000);
+			    };
+				auto Pos = ImGui::GetWindowPos();
+        		Window = ImGui::GetCurrentWindow();
+    			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {15 , 15});
+			
+    		if (ImGui::BeginChild("##左侧菜单标题", ImVec2(200, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NavFlattened));
+    		{
+				auto Pos = ImGui::GetWindowPos();
+			//	DrawLogo(FloatBallwd,{Pos.x + 97, Pos.y + 75}, 85);
+		
+        		ImGui::SetCursorPos({0, 160});
+        		ImGui::Separator();//插入分割线
+    			if (ImGui::Button("主页区域", ImVec2(170, 85)))
+    			{
+    				show_ChildMenu = 0;					
+    			}
+    			ImGui::ItemSize(ImVec2(0, 2));
+    			if (ImGui::Button("绘制区域", ImVec2(170, 85)))
+    			{
+    				show_ChildMenu = 1;					
+    			}
+    			ImGui::ItemSize(ImVec2(0, 2));
+    			if (ImGui::Button("自瞄区域", ImVec2(170, 85)))
+    			{
+    				show_ChildMenu = 2;				
+    			} 
+    			ImGui::ItemSize(ImVec2(0, 2));
+    			if (ImGui::Button("设置区域", ImVec2(170, 85)))
+    			{
+    				show_ChildMenu = 3;					
+    			}
+    			ImGui::ItemSize(ImVec2(0, 2));
+				if (ImGui::Button("隐藏", ImVec2(170, 85)))
+    			{
+    				voice = false;
+    				ImGui::SetWindowPos("Ball", Pos, ImGuiCond_Always);
+    			}
+    			ImGui::EndChild();
+    		}
+			
+    		ImGui::SameLine();
+    		if (!show_ChildMenu) {
+    			if (ImGui::BeginChild("##绘图", ImVec2(0, 0), true,  ImGuiWindowFlags_NavFlattened)) 
+    			{
+					//ImGui::TextColored(ImColor(255, 0, 0,225), "(CN) 很高兴认识你  (EN) Nice to meet you");
+                    ImGui::Spacing();                                       
+                    	ImGui::Text("欢迎使用星巴克\n耗时 %.3fms   当前帧率 %.1fFPS", 100.0f / io.Framerate, io.Framerate);
+                    ImGui::Text("到期时间:%s",buffer);
+                    ImGui::Text("当前版本1.0.0");
+					if (ImGui::Button("重新载入(UE4)",{-1,75})){
+						初始化 = true;
+						
+					}else{
+					    初始化 = false;
+					}
+					ImGui::Spacing();//间距
+					if (ImGui::Button("视野矫正",{-1,75})){
+						
+					}
+    			
+    				
+    				ImGui::TextColored(ImGui::GetStyle().Colors[ImGuiCol_Text], "前设备分辨率为: %dx%d", screen_x, screen_y);	
+    				if (模块地址)
+                    {
+                    ImGui::TextColored(ImColor(0, 255, 0,225), "libUE4.so: 0x%lX  <当前驱动正常>", 模块地址);
+                    } else {
+                    ImGui::TextColored(ImColor(255, 0, 0,225), "libUE4.so: 0x%lX  <当前驱动存在异常,内核驱动不可用>", 模块地址);
+                    }		
+    				ImGui::Text("Arrayaddr：%p",数组);                    
+    				ImGui::Spacing();//间距
+                    if (ImGui::Combo("主题选择", &style_zt, "星际内核主题色\0")) {
+                        switch (style_zt) 
+                        {
+                            case 0:NumIo[50] = 0.0; 
+                                break;
+                        }          
+                    }
+    				ImGui::EndChild();
+    			}
+    		} else if (show_ChildMenu == 1) {
+    			if (ImGui::BeginChild("##绘图", ImVec2(0, 0), true,  ImGuiWindowFlags_NavFlattened)) 
+    			{    				
+    				//ImGui::TextColored(ImColor(255, 0, 0,225), "不经历风雨，怎么迎接暴风雨");   
+    				ImGui::Spacing();//间距
+    				if (ImGui::Button("显示主要",{-1,75}))   
+                    {
+                   	DrawIo[2] = true;
+                   	DrawIo[3] = true;
+                   	DrawIo[8] = true;
+                   	DrawIo[5] = true;
+                   	DrawIo[6] = true;
+                   	DrawIo[10] = true;
+                   	DrawIo[15] = true;
+                   	DrawIo[18] = true;
+                    }						
+    										
+                    ImGui::Checkbox("人物方框", &DrawIo[1]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("人物射线", &DrawIo[2]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("人物骨骼", &DrawIo[3]);
+                    
+                    ImGui::Checkbox("背敌预警", &DrawIo[8]);
+    				ImGui::SameLine();
+                    ImGui::Checkbox("人物距离", &DrawIo[5]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("人物血量", &DrawIo[6]);
+                    
+                    ImGui::Checkbox("人物状态", &DrawIo[15]);
+    				ImGui::SameLine();
+                    ImGui::Checkbox("忽略倒地", &DrawIo[16]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("忽略人机", &DrawIo[17]);
+                    
+                    ImGui::Checkbox("绘制雷达", &DrawIo[7]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("绘制手持", &DrawIo[10]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("绘制穿戴", &DrawIo[9]);
+                    
+                    ImGui::Text("其他显示");
+                    ImGui::Checkbox("绘制载具", &DrawIo[11]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("绘制盒子", &DrawIo[12]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("绘制宝箱", &DrawIo[13]);
+                    
+                    ImGui::Checkbox("手雷预警", &DrawIo[14]);
+                    ImGui::SameLine();                    
+                    ImGui::Checkbox("骨骼点", &DrawIo[4]);
+    				
+					ImGui::SliderFloat("·绘制距离调节", &NumIo[17], 100.0f, 400.0f, "%.0f", 1);               
+    				ImGui::EndChild();
+    			}
+    		} else if (show_ChildMenu == 2) {
+    			if (ImGui::BeginChild("##自瞄", ImVec2(0, 0), true,  ImGuiWindowFlags_NavFlattened)) 
+    			{    				    					   			    
+    			//	ImGui::TextColored(ImColor(255, 0, 0,225), "在你通向那个人的路上，也许会有更多困难，只要坚信这条路往正确，一切皆有意义"); 			
+    				ImGui::Spacing();//间距
+                    ImGui::Checkbox("自瞄总开关", &DrawIo[20]);      
+    				//ImGui::SameLine();
+    				ImGui::Checkbox("触摸位置", &DrawIo[21]);
+					ImGui::SameLine();
+					ImGui::Checkbox("准心射线", &DrawIo[44]);
+					ImGui::SameLine();
+    				ImGui::Checkbox("动态自瞄", &DrawIo[25]);
+    				
+    				ImGui::Checkbox("持续锁定", &DrawIo[30]);				
+					ImGui::SameLine();
+    				ImGui::Checkbox("人机不瞄", &DrawIo[31]);
+    				ImGui::SameLine();
+    				ImGui::Checkbox("倒地不瞄", &DrawIo[32]);
+					
+                    ImGui::Text("触发条件");
+                    if (ImGui::Combo("触发条件", &style_bw, "开火自瞄\0开镜自瞄\0开火开镜\0")) {
+                        switch (style_bw) 
+                        {
+                            case 0:NumIo[0] = 0.0; 
+                                break;
+                            case 1:NumIo[0] = 1.0; 
+                                 break;
+                            case 2:NumIo[0] = 2.0; 
+                                break;                          
+                        }          
+                    }
+                    
+                    if (ImGui::Combo("瞄准优先", &style_zx, "准心优先\0距离优先\0")) {
+                        switch (style_zx) 
+                        {
+                            case 0:NumIo[21] = 0.0; 
+                                break;
+                            case 1:NumIo[21] = 1.0; 
+                                 break;
+                        }          
+                    }
+                    ImGui::Spacing();//间距
+                    ImGui::Spacing();//间距
+                    ImGui::Text("自瞄基础");
+                    if (ImGui::Combo("充电位置", &style_cd, "充电口右\0充电口左\0")) {
+                        switch (style_cd) 
+                        {
+                            case 0:NumIo[10] = 0.0; 
+                                break;
+                            case 1:NumIo[10] = 1.0; 
+                                 break;
+                        }          
+                    }
+                   
+                    if (ImGui::Combo("自瞄部位", &style_idx, "自动\0头部\0胸部\0臀部\0")) {
+                        switch (style_idx) 
+                        {
+                            case 0:NumIo[8] = 0.0; 
+                                break;
+                            case 1:NumIo[8] = 1.0; 
+                                 break;
+                            case 2:NumIo[8] = 2.0; 
+                                break;
+                            case 3:NumIo[8] = 3.0; 
+                                break;
+                        }          
+                    }
+           ImGui::Begin("自瞄配置"); // 第三个并列窗口的标题
+            ImGui::Text;       
+            
+          //  ImGui::TextColored(ImColor(255, 0, 0,225), "在你通向那个人的路上，也许会有更多困难，只要坚信这条路往正确，一切皆有意义"); 			
+    				ImGui::Spacing();//间距
+                ImGui::SliderFloat("自瞄范围", &NumIo[3], 10.0f, 500.0f, "%.0f", 1);
+						ImGui::SliderFloat("触摸范围", &NumIo[7],5.0f,600.0f,"%.0f",2);    
+                        ImGui::SliderFloat("自瞄速度", &NumIo[4], 0.1f, 30.0f, "%.2f", 2);         
+                        ImGui::SliderFloat("平滑力度", &NumIo[9], 0.1f, 10.0f, "%.1f", 3);                
+    					ImGui::SliderFloat("子弹速度", &NumIo[11], 100.0f, 1000.0f, "%.0f", 4);              
+    					ImGui::SliderFloat("压枪力度", &NumIo[14], 0.1f, 20.0f, "%.1f", 5);         
+            
+        ImGui::End();
+                     }		    												
+    		} else {
+    			if (ImGui::BeginChild("##设置", ImVec2(0, 0), true,  ImGuiWindowFlags_NavFlattened)) 
+    			{
+    				if (ImGui::CollapsingHeader("绘制帧率设置"))
+                    {
+                    ImGui::SliderFloat("渲染速度", &NumIo[12], 60.0f, 120.0f, "%.0f", 1);
+                    }
+                    
+    				if (ImGui::CollapsingHeader("绘制样式设置"))
+                    {	
+    					ImGui::RadioButton("普通方框", &NumIo[15], 0.0f);      
+                    	ImGui::SameLine();
+                    	ImGui::RadioButton("立体方框", &NumIo[15], 1.0f);						
+    				}
+    				
+    				if (ImGui::CollapsingHeader("雷达参数设置"))
+                    {
+                    ImGui::SliderFloat("·雷达X位调节", &NumIo[1], 0.0f, 2400.0f, "%.1f", 2);            					
+            		ImGui::SliderFloat("·雷达Y位调节", &NumIo[2], 0.0f, 1080.0f, "%.1f", 3);		
+					ImGui::SliderFloat("·雷达缩放调节", &NumIo[16], 10.0f, 400.0f, "%.0f", 4);
+    				}
+    				
+    				if (ImGui::CollapsingHeader("绘制粗细设置"))
+                    {						
+    					ImGui::SliderFloat("玩家方框", &BoxSize, 0.4f, 10.0f, "%.1f", 1);                             
+                        ImGui::SliderFloat("BOT方框", &BotBoxSize, 0.1f, 10.0f, "%.1f", 2);         
+                        ImGui::SliderFloat("玩家射线", &LineSize, 0.1f, 10.0f, "%.1f", 3);                
+    					ImGui::SliderFloat("BOT射线", &BotLineSize, 0.1f, 10.0f, "%.1f", 4);              
+    					ImGui::SliderFloat("玩家骨骼", &BoneSize, 0.1f, 10.0f, "%.1f", 5);   
+    					ImGui::SliderFloat("BOT骨骼", &BotBoneSize, 0.1f, 10.0f, "%.1f", 6);                
+    				}
+        				
+    				if (ImGui::CollapsingHeader("绘制颜色设置"))
+                    {
+        				ImGui::ColorEdit4("玩家方框", (float*)&BoxColor,ImGuiColorEditFlags_NoInputs);	
+        				ImGui::SameLine();
+        				ImGui::ColorEdit4("BOT方框", (float*)&BotBoxColor,ImGuiColorEditFlags_NoInputs);
+						
+						ImGui::ColorEdit4("玩家方框背景", (float*)&BoxblackColor,ImGuiColorEditFlags_NoInputs);	
+        				ImGui::SameLine();
+        				ImGui::ColorEdit4("BOT方框背景", (float*)&BotBoxblackColor,ImGuiColorEditFlags_NoInputs);
+        			
+        				ImGui::ColorEdit4("玩家射线", (float*)&LineColor,ImGuiColorEditFlags_NoInputs);
+        				ImGui::SameLine();
+        				ImGui::ColorEdit4("BOT射线", (float*)&BotLineColor,ImGuiColorEditFlags_NoInputs);
+        			
+        				ImGui::ColorEdit4("玩家骨骼", (float*)&BoneColor,ImGuiColorEditFlags_NoInputs);
+        				ImGui::SameLine();
+        				ImGui::ColorEdit4("BOT骨骼", (float*)&BotBoneColor,ImGuiColorEditFlags_NoInputs); 
+    				}				
+        			                              
+                            if (ImGui::Button("套装", {-1, 70}))
+                        {
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+                         long int a1 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x1C0;//背包
+                          long int a2 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x38;//脸部     
+                           long int a3 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x150;//脸部  
+                     long int a4 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x188;//衣服                                
+                           long int a5 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x70;//脸部          
+           driver->WriteAddress<int>(a1, 1501003310);
+           driver->WriteAddress<int>(a5, 40605012);                      
+           driver->WriteAddress<int>(a4, 1400022);               
+           driver->WriteAddress<int>(a2, 402165); 
+            driver->WriteAddress<int>(a3, 1404160);                                          
+           driver->WriteAddress<int>(a, 1404207);           
+            	}
+                         if (ImGui::Button("果冻/小熊背包", {-1, 70}))
+                        {
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+                         long int a1 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x1C0;//背包
+           driver->WriteAddress<int>(a1, 1501003261);
+           driver->WriteAddress<int>(a, 1406970);            
+            	}
+                         if (ImGui::Button("黄金风衣/小熊背包", {-1, 70}))
+                        {           	                                	 
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x38;//衣服
+                         long int a3 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+                         long int a1 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x1C0;//背包
+                             long int a2 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x38;//脸部                             
+           driver->WriteAddress<int>(a1, 1501003261);
+           driver->WriteAddress<int>(a3, 1406891);           
+           driver->WriteAddress<int>(a2, 474031);                       
+           driver->WriteAddress<int>(a, 1400779);            
+            	}
+                         if (ImGui::Button("曙光芙洛拉/小熊背包", {-1, 70}))
+                        {
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+                         long int a1 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x1C0;//背包
+           driver->WriteAddress<int>(a1, 1501003261);
+           driver->WriteAddress<int>(a, 1407103);
+            
+            	}
+if (ImGui::Button("明日香/小猫背包", {-1, 80}))
+            	{
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+                         long int a1 = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x340)+0x30)+0x388)+0x1C0;//背包     
+           driver->WriteAddress<int>(a, 1406387);
+           driver->WriteAddress<int>(a1, 1501003050);
+           }
+           
+if (ImGui::CollapsingHeader("手持枪械美化"))
+{
+if (ImGui::Button("MK14-龙吟国度", {-1, 80}))
+            	{
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x2740)+0xA18)+0x11C;//衣服
+         driver->WriteAddress<int>(a, 1103007028);
+            	}
+if (ImGui::Button("MG3-苍穹之龙", {-1, 80})) 
+            	{
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x2740)+0xA18)+0x11C;//衣服
+         driver->WriteAddress<int>(a, 1105010008);
+                     	}
+if (ImGui::Button("AK-星海提督", {-1, 80})) 
+            	{
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x2740)+0xA18)+0x11C;//衣服
+         driver->WriteAddress<int>(a, 1101001213);
+                              	}
+if (ImGui::Button("M416-庇护之潮", {-1, 80})) 
+            	{
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x2740)+0xA18)+0x11C;//衣服
+         driver->WriteAddress<int>(a, 1101004209);
+            	}
+if (ImGui::Button("M416-忍神", {-1, 80}))     
+            	{
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x2740)+0xA18)+0x11C;//衣服
+         driver->WriteAddress<int>(a, 1101004218);
+            	}            	
+if (ImGui::Button("狗杂-冥河烈焰", {-1, 80})) 
+            	{
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC8C0468)+0x0)+0x2740)+0xA18)+0x11C;//衣服
+         driver->WriteAddress<int>(a, 110100);
+         
+             }
+             }
+        			
+        			        		/*	if (ImGui::Button("广角", {-1, 70}))
+                        {
+                     driver->WriteAddress<float>(libUE4 + 0x334be48, 2);      
+                        }
+                         if (ImGui::Button("广角关", {-1, 70}))
+                        {
+                     driver->WriteAddress<float>(libUE4 + 0x334be48, 1);      
+                        }
+                        
+                        if (ImGui::Button("聚点", {-1,70}))
+                        {driver->write<float>(libUE4+0x54E7870,8.47963525e-21);}*/
+                        
+                        
+                   /*     ImGui::Text("衣服美化：[脱甲]");    
+                         if (ImGui::Button("曙光芙洛拉-衣服", {-1, 70}))
+                        {
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC5AFD38)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+           driver->WriteAddress<int>(a, 1407103);
+                        }
+                        
+                        if (ImGui::Button("凛冬冰后-衣服", {-1, 70}))
+                        {
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC5AFD38)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+                         driver->WriteAddress<int>(a, 1407107);
+                        }
+                        
+                        if (ImGui::Button("秘渊灵主-衣服", {-1, 70}))
+                        {
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC5AFD38)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+                         driver->WriteAddress<int>(a, 1406971);
+                        }
+                        
+                        if (ImGui::Button("海洋之王-衣服", {-1, 70}))
+                        {
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC5AFD38)+0x0)+0x340)+0x30)+0x388)+0x118;//衣服
+                         driver->WriteAddress<int>(a, 1407140);
+                        }
+
+                        if (ImGui::Button("小熊背包-背包", {-1, 70}))
+                        {
+                         long int a = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(libUE4 + 0xC5AFD38)+0x0)+0x340)+0x30)+0x388)+0x1C0;//背包
+                         driver->WriteAddress<int>(a, 1501003261);
+                        }*/
+        			if (ImGui::Button("保存设置",{361,75}))   
+                    {
+                   		NumIoSave("FlyBlueSaveNum");
+                    }	
+                    ImGui::SameLine();
+        			if (ImGui::Button("重置设置",{361,75}))   
+                    {
+                   		CleanData();
+                    }	
+					
+                    if (ImGui::Button("安全离开",{-1,75}))   
+                    {
+                    	*flag = false;
+                    }
+        					
+        			ImGui::EndChild();
+    			}
+    		}
+    	}
+		
+    if(guodu<=150){IsBall=false;}
+	} else if(voice) {
+    if(guodu>150){
+    guodu=guodu-28;
+    }
+	isSetSize=false;
+    ImGui::End();
+    }
+	
+	if (IsWin)
+		{
+			IsWin = false;
+            IsLoGin = false;
+            BallSwitch = false;
+            ImGui::SetWindowSize("Ball", {100.0f, 100.0f});
+        }  
+		
+    ImGui::Render();  
+	
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    eglSwapBuffers(display, surface);
+}

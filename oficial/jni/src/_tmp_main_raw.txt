@@ -1,0 +1,1138 @@
+
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <pthread.h>
+#include <fstream>
+#include <string.h>
+#include <time.h>
+#include <malloc.h>
+#include <iostream>
+#include <fstream>
+#include<iostream>
+#include<ctime>
+using namespace std;
+
+#include <draw.h>
+#include <TouchHelper.h>
+#include "Android_draw/图片调用.h"
+#include "Android_draw/图片/touxiang.h"
+#include "wanbai.h"
+#include "结构体.h"
+#include "物资类.h"
+#include "imgui_ui.h"
+#include "i18n.h"
+#include "add/ThreadPool.h"
+#include "add/DataReader.h"
+#include "CPUaffinity/timer.h"
+int style_zt = 0;
+int style_zx = 0;
+int style_bw = 0;
+int style_cd = 0;
+int style_idx = 0;
+int PlayerId;
+struct NumberAnimation {
+    string current;
+    string next;
+    float progress = 0.0f;
+    bool animating = false;
+};
+
+static int touchCount = 0;
+enum AnimationMode {
+    ANIM_HORIZONTAL,
+    ANIM_VERTICAL,
+    ANIM_BEZIER
+};
+static float errorBgWidth = 0.0f;
+static float errorBgHeight = 0.0f;
+static float targetBgWidth = 0.0f;
+static float targetBgHeight = 0.0f;
+static float bgAnimationSpeed = 0.1f;
+
+static time_t libUE4SuccessTime = 0;
+bool windowVisible = true;
+float animationScale = 0.0f;
+float targetScale = 0.0f;
+float animationDamping = 0.07f;
+bool tabChanging = false;
+float tabOpacity = 1.0f;
+float targetTabOpacity = 1.0f;
+float tabDamping = 0.03f;
+
+float cloud = 0.0f;
+float white = 0.0f;
+void InitAnimationData() {
+    wh["win_x_0"] = {0.0f, 0.0f};
+    wh["win_x_1"] = {0.0f, 0.0f};
+    wh["win_x_2"] = {0.0f, 0.0f};
+    wh["win_x_3"] = {0.0f, 0.0f};
+    wh["win_x_4"] = {0.0f, 0.0f};
+    wh["win_y_0"] = {0.0f, 0.0f};
+    wh["win_y_1"] = {0.0f, 0.0f};
+    wh["win_y_2"] = {0.0f, 0.0f};
+    wh["win_y_3"] = {0.0f, 0.0f};
+    wh["win_y_4"] = {0.0f, 0.0f};
+}
+void UpdateAnimation(float &value, float target, float damping) {
+    value += (target - value) * damping;
+    if (fabs(target - value) < 0.005f) {
+        value = target;
+    }
+}
+static AnimationMode currentAnimationMode = ANIM_HORIZONTAL;
+static bool showAnimationSettings = false;
+
+NumberAnimation playerAnim;
+NumberAnimation botAnim;
+static float playerCountAnim = 0.0f;
+static float botCountAnim = 0.0f;
+static int prevPlayerCount = 0;
+static int prevBotCount = 0;
+static time_t countChangeTime = 0;
+static bool isDotsMoving = false;
+static float dotsAnimationProgress = 0.0f;
+static ImVec2 dotsStartPos[3];
+static ImVec2 dotsEndPos[3];
+static time_t dotsAnimationStartTime = 0;
+vector<string> lyrics;
+int currentLyricIndex = 0;
+float lyricScrollPos = 0.0f;
+float lyricScrollSpeed = 30.0f;
+bool isLyricPlaying = false;
+time_t lyricStartTime = 0;
+using namespace std;
+timer RenderingFPS;
+static bool isRecordingCircleTouched = false;
+float 录屏 = false;
+static bool isTimerRunning = false;
+static int timerStartTime = 0;
+static float 录屏时长 = 30;
+float globalFontScale = 1.3f; 
+struct FontSettings {
+    float scale = 1.0f;
+    float minScale = 0.5f;
+    float maxScale = 2.0f;
+    bool dirty = false;
+    
+    void SetScale(float newScale) {
+        scale = std::clamp(newScale, minScale, maxScale);
+        dirty = true;
+    }
+    
+    void ApplyScale(ImGuiIO& io) {
+        if (dirty) {
+            io.FontGlobalScale = scale;
+            dirty = false;
+        }
+    }
+};
+
+static FontSettings globalFontSettings;
+
+ImTextureID logo_png, aim_png;
+bool 链接了;
+bool DrawIo[50];
+float NumIo[50];
+bool 物资[50];
+ImColor 物资颜色[50];
+ImColor 绘制颜色[16];
+float 绘制粗细[16];
+float draw_style[20];
+float fwjl = NumIo[3];
+DataReader reader;
+ThreadPool threadPool(4);
+Data fanhua;
+WuziData wz;
+string wht, flp;
+void Draw_Meun();
+void AimBotAuto();
+void NumIoLoad(const char *name);
+void Draw_Main(ImDrawList *Draw);
+void 启动和平精英() {
+    string command = "am start -n com.vng.pubgmobile/com.epicgames.ue4.SplashActivity";
+    system(command.c_str());
+}
+
+const char* color_codes[] = {
+    "\033[31;1m",
+    "\033[32;1m",
+    "\033[33;1m",
+    "\033[34;1m",
+    "\033[35;1m"
+    "\033[36;1m"
+};
+
+
+int main() {
+    wht = "2";
+    
+    flp = "2";
+    screen_config(); 
+    init_screen_x = screen_x + screen_y;
+    init_screen_y = screen_y + screen_x;
+    if(!init_vulkan(init_screen_x, init_screen_y, false)) {
+        exit(0);
+    }
+
+    draw_style[10] = 5;
+    NumIoLoad("繁华配置01");
+
+    if (draw_style[10] == 5) {
+        draw_style[10] = 1;
+        启动和平精英();
+    }
+    srand((unsigned int)time(NULL));
+    int random_index = rand() % 6;
+    printf("%s", color_codes[random_index]);
+    
+    if (draw_style[10] == 1) {
+        printf("宝宝！你现在打开的是和平精英\n");
+    }
+    if(!init_vulkan(init_screen_x, init_screen_y, false)) {
+        exit(0);
+    }
+lyrics = {
+    "我说这里好吗",
+    "你抬头而无话",
+    "你抱我吻上我嘴巴",
+    "却似你吻向他",
+    "我暗中想总有一点爱吧",
+    "可以交给我吧",
+    "总算得恋爱吧",
+    "相爱少点也罢",
+    "我却更了解是",
+    "编织梦话",
+    "半点心 请交给我不过是个小小愿望吧",
+    "你的心 却一早已整个完完全全交给他",
+    "怕说到每一句话",
+    "旁人亦听得见它",
+    "我只好偷偷将心话",
+    "变成漫天情话",
+    "我暗中想总有一点爱吧",
+    "可以交给我吧",
+    "总算得恋爱吧",
+    "相爱少点也罢",
+    "我却更了解是",
+    "编织梦话",
+    "半点心 请交给我不过是个小小愿望吧",
+    "你的心 却一早已整个完完全全交给他",
+    "半点心 请交给我不过是个小小愿望吧",
+    "你的心 却一早已整个完完全全交给他",
+    "我暗中想总有一点爱吧",
+    "可以交给我吧",
+    "总算得恋爱吧",
+    "相爱少点也罢",
+    "我却更了解是",
+    "编织梦话",
+    "半点心 请交给我不过是个小小愿望吧",
+    "你的心 却一早已整个完完全全交给他",
+    "半点心 请交给我不过是个小小愿望吧",
+    "你的心 却一早已整个完完全全交给他",
+    "半点心 请交给我不过是个小小愿望吧",
+    "你的心 却一早已整个完完全全交给他"
+};
+    lyrics.clear();
+    InitAnimationData();
+    ImGui_init();
+    TouchScreenHandle();
+    std::thread aim_thread(AimBotAuto);
+    aim_thread.detach();
+    window_set();
+    logo_png = VK.ImAgeHeadFile(touxiang, sizeof(touxiang));
+    加载枪械图片();
+    RenderingFPS.AotuFPS_init();
+    RenderingFPS.setAffinity();
+
+    ImGui_ImplAndroid_NewFrame(init_screen_x, init_screen_y);
+
+    while (true) {
+        auto start = std::chrono::high_resolution_clock::now();
+       
+        RenderingFPS.SetFps(NumIo[12]);
+        RenderingFPS.AotuFPS();
+        VK_Begin();
+        if (fanhua.pid > 0 && fanhua.libUE4 > 0)
+            Draw_Main(ImGui::GetForegroundDrawList());
+        Draw_Meun();
+        VK_End();
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        if (elapsed.count() < 16) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(16 - elapsed.count()));
+        }
+    }
+    shutdown();
+    return 0;
+    
+}
+void CleanData() {
+draw_style[1] = 0;
+DrawIo[3] = true;
+DrawIo[5] = true;
+DrawIo[6] = true;
+DrawIo[20] = true;
+DrawIo[25] = true;
+DrawIo[10] = true;
+DrawIo[8] = true;
+DrawIo[2] = true;
+物资颜色[0] = ImColor(255, 255, 255, 255);
+物资颜色[1] = ImColor(255, 255, 255, 255);
+物资颜色[2] = ImColor(255, 255, 255, 255);
+物资颜色[3] = ImColor(255, 255, 255, 255);
+物资颜色[4] = ImColor(255, 255, 255, 255);
+物资颜色[5] = ImColor(255, 255, 255, 255);
+物资颜色[6] = ImColor(255, 255, 255, 255);
+物资颜色[7] = ImColor(255, 255, 255, 255);
+物资颜色[8] = ImColor(255, 0, 0, 255);
+物资颜色[9] = ImColor(255, 0, 0, 255);
+物资颜色[10] = ImColor(255, 255, 255, 255);
+物资颜色[11] = ImColor(255, 255, 255, 255);
+物资颜色[12] = ImColor(255, 255, 255, 255);
+物资颜色[13] = ImColor(255, 255, 255, 255);
+物资颜色[14] = ImColor(255, 255, 255, 255);
+物资颜色[15] = ImColor(255, 255, 255, 255);
+物资颜色[16] = ImColor(255, 255, 255, 255);
+物资颜色[17] = ImColor(255, 255, 255, 255);
+物资颜色[18] = ImColor(255, 255, 255, 255);
+物资颜色[19] = ImColor(255, 255, 255, 255);
+物资颜色[20] = ImColor(255, 255, 255, 255);
+绘制颜色[0] = ImColor(255, 0, 0, 150);
+绘制颜色[1] = {1.0f,0.0f,0.0f,1.0f};
+绘制颜色[2] = ImColor(255,255,255,255);
+绘制颜色[3] = ImColor(0,0,0,25);
+绘制颜色[4] = ImColor(0,0,0,0);
+绘制颜色[5] = ImColor(255,0,0,255);
+绘制颜色[6] = ImColor(0,255,0,255);
+绘制颜色[7] = ImColor(173,216,230,255);
+绘制颜色[8] = ImColor(255,255,255,255);
+绘制粗细[1] = 1.5f;
+绘制粗细[2] = 1.5f;
+绘制粗细[3] = 1.5f;
+绘制粗细[4] = 1.5f;
+绘制粗细[5] = 2.5f;
+绘制粗细[6] = 2.5f;
+NumIo[1] = 300.0f;  
+NumIo[2] = 400.0f;
+NumIo[3] = 120.0f;
+NumIo[4] = 17.0f;
+NumIo[6] = 1400.0f;
+NumIo[5] = 650.0f;
+NumIo[7] = 300.0f;  
+NumIo[8] = 0.0f;  
+NumIo[9] = 4.4f; 
+NumIo[10] = 0.0f;  
+NumIo[11] = 600.0f;
+NumIo[12] = 90;
+NumIo[13] = 0.0f;
+NumIo[14] = 1.0f;
+NumIo[15] = 0.0f;
+NumIo[16] = 100.0f;
+NumIo[17] = 400.0f;
+NumIo[19] = 150.0f;
+NumIo[20] = 0.0f;
+NumIo[21] = 0.0f;
+NumIo[22] = 1.0f;
+NumIo[23] = 255.0f;
+draw_style[3] = 120;
+draw_style[7] = 1;
+draw_style[8] = 100;
+draw_style[9] = 100;
+draw_style[12] = 0;
+style_bw = 0;
+style_zx = 0;
+style_idx = 0;
+style_cd = 0;
+
+
+}
+
+#include "Android_draw/其他.h"
+#define AIMBOT_SEPARATED
+#include "Aim/Aim.h"
+int AimCount, MaxPlayerCount, Gmin = -1;
+float zm_x, zm_y;
+bool IsAimLongAim = false;
+char AimName[32];
+Vec2 vpvp;
+AimStruct Aim[100];
+
+void Draw_Main(ImDrawList *Draw) {
+    if (draw_style[10] == 0) {
+      system("rm -rf /data/繁华配置");
+      exit(1);
+    } else if (draw_style[10] == 1) {
+    #include "Android_draw/hook.h"
+}
+if(DrawIo[20] && fanhua.TotalUp){
+if (DrawIo[20] && DrawIo[25] && DrawIo[45] &&Gmin != -1) {
+Draw->AddCircle({screen_x / 2, screen_y / 2}, fwjl, ImColor(255,255,255,255), 0, 2.0f);
+}else if(DrawIo[20]) {
+Draw->AddCircle({screen_x / 2, screen_y / 2}, NumIo[3], ImColor(255,255,255,255), 0, 2.0f); 
+}
+}
+if(DrawIo[44]){
+if (Gmin != -1) {
+Draw->AddLine({screen_x / 2, screen_y / 2}, {vpvp.x, vpvp.y}, ImColor(255,255,255,255), 3.0f);
+}
+}
+if (DrawIo[37] && Gmin != -1) {
+   
+    float distanceToTarget = sqrtf(powf(vpvp.x - screen_x/2, 2) + powf(vpvp.y - screen_y/2, 2));
+    if (distanceToTarget < NumIo[3]) {
+        if (fanhua.IsBot == 1) {
+            绘制颜色[5] = ImColor(255, 255, 0);
+            绘制颜色[6] = ImColor(255, 255, 0);
+        } else {
+            绘制颜色[5] = ImColor(255, 255, 0);
+            绘制颜色[6] = ImColor(255, 255, 0);
+        }
+    } else {
+        绘制颜色[5] = ImColor(255, 255, 255);
+        绘制颜色[6] = ImColor(255, 255, 255);
+    }
+}
+if (DrawIo[21]) {
+string ssf;  
+ssf += i18n::TL("勿放控件，长按拖动");
+auto textSize = ImGui::CalcTextSize(ssf.c_str(), 0, 32);
+Draw->AddRectFilled({0,0}, {screen_x, screen_y},ImColor(0,0,0,110));
+Draw->AddRectFilled({NumIo[6] - NumIo[7] / 2, screen_y - NumIo[5] + NumIo[7] / 2}, {NumIo[6] + NumIo[7] / 2, screen_y - NumIo[5] - NumIo[7] / 2}, 绘制颜色[0]); 
+Draw->AddText(NULL, 32, {NumIo[6] - (textSize.x / 2), screen_y - NumIo[5]}, ImColor(255, 255, 255), ssf.c_str());
+}
+char *CasName;
+
+for (int i = 0; i < wz.Count; i++)
+{
+
+if (wz.w>0){
+if (DrawIo[11]&&GetVehicleInfo(wz.Name, &CasName)) {//载具
+string name;
+name += CasName;
+name += "[";
+name += to_string((int)wz.Distance);
+name += (i18n::GetLanguage() == i18n::Lang::RU ? "м]" : "m]");
+auto textSize = ImGui::CalcTextSize(name.c_str(),0, 20);
+Draw->AddText(NULL, 20,{wz.ScreenPos.x-(textSize.x / 2), wz.ScreenPos.y}, ImColor(255, 255, 255, 255), name.c_str());
+}
+}
+if (wz.w>0){
+if (DrawIo[91]&&盒子空投(wz.Name, &CasName)) {
+string name;
+name += CasName;
+name += "[";
+name += to_string((int)wz.Distance);
+name += (i18n::GetLanguage() == i18n::Lang::RU ? "м]" : "m]");
+auto textSize = ImGui::CalcTextSize(name.c_str(),0, 20);
+Draw->AddText(NULL, 20,{wz.ScreenPos.x-(textSize.x / 2), wz.ScreenPos.y}, ImColor(255, 255, 255, 255), name.c_str());
+}
+}
+
+            }
+            
+if (DrawIo[7]) {
+ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(NumIo[1] - NumIo[19], NumIo[2] - NumIo[19]),  ImVec2(NumIo[1] + NumIo[19], NumIo[2] + NumIo[19]), ImColor(255, 255, 255, 70), 10.0f );
+ImGui::GetForegroundDrawList()->AddRect({NumIo[1] - NumIo[19],NumIo[2]-NumIo[19]},{NumIo[1] +NumIo[19],NumIo[2]+NumIo[19]},ImColor(255,255,255,125),10,0,4.0f);
+
+ImVec2 pointss[4] = {
+ImVec2(NumIo[1] - 10.0f, NumIo[2] + 14.0f),
+ImVec2(NumIo[1], NumIo[2] - 12.0f),
+ImVec2(NumIo[1] + 10.0f, NumIo[2] + 14.0f),
+ImVec2(NumIo[1], NumIo[2] + 8.0f)
+};
+
+
+   float centerX = NumIo[1];
+    float centerY = NumIo[2];
+    float radius = NumIo[19];
+    
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    
+    drawList->AddCircleFilled(ImVec2(centerX, centerY), 8.0f, ImColor(0, 255, 0, 255));
+    
+    ImVec2 topPoint(centerX, centerY - radius);
+    drawList->AddLine(ImVec2(centerX, centerY), topPoint, ImColor(0, 255, 0, 255), 2.0f);
+   
+    float arrowSize = 10.0f;
+    drawList->AddTriangleFilled(
+        ImVec2(topPoint.x - arrowSize, topPoint.y + arrowSize),
+        ImVec2(topPoint.x + arrowSize, topPoint.y + arrowSize),
+        topPoint,
+        ImColor(0, 255, 0, 255)
+    );
+    }
+
+}
+
+void 线性插值() {
+    struct LerpItem {
+        float& beg;
+        float& end;
+        float factor;
+    };   
+    LerpItem items[] = {
+        {窗口x.beg, 窗口x.end, 0.111f},
+        {窗口y.beg, 窗口y.end, 0.1f},
+        {位置x.beg, 位置x.end, 0.05f},
+        {位置y.beg, 位置y.end, 0.1f},
+        {动画.beg, 动画.end, 0.06f},
+        {圆角值.beg, 圆角值.end, 12.0f},
+        {设置.beg, 设置.end, 0.06f},
+        {调色板.beg, 调色板.end, 0.06f},
+        {homepage, homepages, 0.06f},
+        {setup, setups, 0.08f},
+        {调色板页数.beg, 调色板页数.end, 0.04f},
+        {灵动岛宽度.beg, 灵动岛宽度.end, 0.125f},
+        {灵动岛高度s.beg, 灵动岛高度s.end, 0.1f},
+        {灵动岛高度x.beg, 灵动岛高度x.end, 0.1f},
+        {字体位置.beg, 字体位置.end, 0.125f},
+        {字体大小.beg, 字体大小.end, 0.125f}
+    };    
+    for (auto& item : items) {
+        Lerp(item.beg, item.end, item.factor);
+    }
+}
+
+float 三次贝塞尔(float t, float p0, float p1, float p2, float p3) {
+    float u = 1 - t;
+    float tt = t * t;
+    float uu = u * u;
+    float uuu = uu * u;
+    float ttt = tt * t;
+    
+    float res = uuu * p0;
+    res += 3 * uu * t * p1;
+    res += 3 * u * tt * p2;
+    res += ttt * p3;
+    return res;
+}
+
+void Draw_Meun() {
+   if (DrawIo[20]) {
+        float fps = ImGui::GetIO().Framerate;
+        char fpsText[32];
+        snprintf(fpsText, sizeof(fpsText), "DrawFps: %.1f", fps);
+        ImVec2 textSize = ImGui::CalcTextSize(fpsText);
+        
+        ImVec2 fpsPos(50.0f, screen_y - textSize.y - 100.0f);
+        ImGui::GetForegroundDrawList()->AddText(
+            fpsPos,
+            ImColor(255, 255, 255, 255),
+            fpsText
+        );
+        char aimText[128];
+        snprintf(aimText, sizeof(aimText), 
+                "Aim: %.1f", 
+                NumIo[3]);
+        ImVec2 aimTextSize = ImGui::CalcTextSize(aimText);
+        ImVec2 aimPos(50.0f, fpsPos.y + textSize.y + 10.0f);
+        ImGui::GetForegroundDrawList()->AddText(
+            aimPos,
+            ImColor(255, 255, 255, 255),
+            aimText
+        );
+        }
+    targetScale = 开关 ? 1.0f : 0.0f;
+    UpdateAnimation(animationScale, targetScale, animationDamping);
+    if (!开关 && animationScale < 0.01f) {
+        animationScale = 0.0f;
+    }
+    float animatedWindowWidth = 980.0f * animationScale;
+    float animatedWindowHeight = 700.0f * animationScale;    
+    灵动岛();
+    线性插值();
+    if (开关) {
+        位置x.end = 10;
+        动画.end = 1;
+        人数位置.beg = 0;
+    } else {
+        位置x.end = 0;
+        动画.end = 0;
+        人数位置.beg = 50;
+        if (Tab == 3) {
+            窗口x.end = 0 - 调色板.beg;
+        } else {
+            窗口x.end = 0;
+        }
+        窗口y.end = 0;
+    }
+    if (animationScale > 0.01f) {
+        float 窗口居中X = (screen_x - animatedWindowWidth + 设置.beg - 调色板.beg) / 2.0f;
+        float 窗口居中Y = (screen_y - animatedWindowHeight) / 2.0f;
+        if (动画.beg < 0.01f) windows = 0; 
+        else windows = 1;
+        
+        if (动画.beg > 0.99f) 圆角 = 12; 
+        else 圆角 = 12;
+        
+        if (动画.beg > 0.9f) {
+            窗口x.end = 980.0f;
+            窗口y.end = 700.0f;
+        } else {
+            if (Tab == 3) {
+                窗口x.end = 50 - 调色板.beg;
+            } else {
+                窗口x.end = 50;
+            }
+            窗口y.end = 50;
+        }
+        cloud += (white - cloud) * (0.05f * speed);
+        for (auto& item : wh) {
+            Lerp(item.second.beg, item.second.end, 0.05f * speed);
+        }
+    if (Tab == 0) {
+        white = 1000;
+        wh["win_x_0"].end = 0;
+        wh["win_x_1"].end = 0;
+        wh["win_x_2"].end = 0;
+        wh["win_y_1"].end = 750;
+        wh["win_y_2"].end = 750;
+        wh["win_y_3"].end = 750;
+        wh["win_y_4"].end = 750;
+    } else if (Tab == 1) {
+        white = 45;
+        wh["win_x_0"].end = 50;
+        wh["win_x_1"].end = 0;
+        wh["win_x_2"].end = 0;
+        wh["win_y_1"].end = 45;
+        wh["win_y_2"].end = 750;
+        wh["win_y_3"].end = 750;
+        wh["win_y_4"].end = 750;
+    } else if (Tab == 2) {
+        white = 750;
+        wh["win_x_0"].end = 50;
+        wh["win_x_1"].end = 50;
+        wh["win_x_2"].end = 0;
+        wh["win_y_1"].end = 15;
+        wh["win_y_2"].end = 45;
+        wh["win_y_3"].end = 750;
+        wh["win_y_4"].end = 750;
+    } else if (Tab == 4) {
+        white = 750;
+        wh["win_x_0"].end = 50;
+        wh["win_x_1"].end = 50;
+        wh["win_x_2"].end = 50;
+        wh["win_y_1"].end = 15;
+        wh["win_y_2"].end = 15;
+        wh["win_y_3"].end = 45;
+        wh["win_y_4"].end = 750;
+    } else if (Tab == 6) {
+        white = 750;
+        wh["win_x_0"].end = 50;
+        wh["win_x_1"].end = 50;
+        wh["win_x_2"].end = 50;
+        wh["win_x_3"].end = 50;
+        wh["win_x_4"].end = 0;
+        wh["win_y_1"].end = 15;
+        wh["win_y_2"].end = 15;
+        wh["win_y_3"].end = 15;
+        wh["win_y_4"].end = 45;
+    }
+
+
+        ImGui::SetNextWindowPos({窗口居中X, 窗口居中Y}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(animatedWindowWidth - 设置.beg + 调色板.beg, animatedWindowHeight), ImGuiCond_Always);
+        if (window) {
+            zhu_set();
+            ImGui::Begin("繁华奚落", &window, 
+            ImGuiWindowFlags_NoDecoration | 
+            ImGuiWindowFlags_NoBackground | 
+            ImGuiWindowFlags_NoMove);
+
+        ImGui::PopStyleVar(); 
+        ImGui::PopStyleColor();
+        aevrage_all = window_x / 6.302521f; 
+        aevrage_now = ImGui::GetWindowSize().x / 6.302521f; 
+        tab0 = window_y * 0;
+        tab1 = window_y * 1;
+        tab2 = window_y * 2;
+        tab3 = window_y * 3;
+        tab4 = window_y * 4;
+        tab5 = window_y * 5;
+        tab6 = window_y * 6;
+
+        ImGui::SetCursorPos(ImVec2(0, 20));
+        ImGui::BeginChild("左侧标题", ImVec2(aevrage_now*1.5, 670), true);
+        ImDrawFlags roundingFlags = ImDrawFlags_RoundCornersLeft;
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            ImGui::GetWindowPos(), 
+            ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x, ImGui::GetWindowPos().y + ImGui::GetWindowSize().y),
+            ImColor(230, 230, 230, 255),
+            15.0f,
+            roundingFlags
+        );
+        
+        ImVec2 windowPos = ImGui::GetWindowPos();
+        float circleRadius = 10;
+        float circleSpacing = 30;
+        float startX = windowPos.x + 20;
+        float startY = windowPos.y + 20;   
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_list->AddCircleFilled(ImVec2(startX, startY), circleRadius, IM_COL32(255, 0, 0, 255));  
+        draw_list->AddCircleFilled(ImVec2(startX + circleSpacing, startY), circleRadius, IM_COL32(255, 255, 0, 255));
+        draw_list->AddCircleFilled(ImVec2(startX + 2 * circleSpacing, startY), circleRadius, IM_COL32(0, 255, 0, 255));
+        
+        DrawLogo(logo_png, {ImGui::GetWindowPos().x + aevrage_now/1.944444f + 30, ImGui::GetWindowPos().y + 120}, 110);
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ImGui::Separator();
+        ImGui::PopStyleColor();
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10); 
+        
+        if (button("主 页", ImVec2(ImGui::GetContentRegionAvail().x, 60))) Tab = 0;
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 15);
+        if (button("绘 图", ImVec2(ImGui::GetContentRegionAvail().x, 60))) Tab = 1;
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 15);
+        if (button("瞄 准", ImVec2(ImGui::GetContentRegionAvail().x, 60))) Tab = 2;        
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 15);
+        if (button("物 资", ImVec2(ImGui::GetContentRegionAvail().x, 60))) Tab = 4;
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 15);
+        if (button("设 置", ImVec2(ImGui::GetContentRegionAvail().x, 60))) Tab = 6;
+        ImGui::EndChild();
+
+        const float spacing = -2.0f;
+        const float rightContentWidth = aevrage_now*4.4 - spacing;
+        
+        ImGui::SetCursorPos(ImVec2(aevrage_now*1.5 + spacing, 20));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 20.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
+        
+       ImGui::BeginChild("右侧内容", ImVec2(rightContentWidth, 670), true, 
+            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
+        
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            ImGui::GetWindowPos(), 
+            ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x, ImGui::GetWindowPos().y + ImGui::GetWindowSize().y),
+            ImColor(255, 255, 255, 255),
+            15.0f,
+            ImDrawFlags_RoundCornersRight
+        );
+
+        static float win_y = ImGui::GetCursorPosY();
+        ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + wh["win_x_0"].beg/2, win_y + 15)); 
+        ImGui::BeginChild("主页内容", ImVec2(rightContentWidth - wh["win_x_0"].beg, 720), true);
+        if (Tab == 0) 主页_1(); 
+        ImGui::EndChild();
+        
+        ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + wh["win_x_1"].beg/2, win_y + wh["win_y_1"].beg));
+        ImGui::BeginChild("绘制内容", ImVec2(rightContentWidth - wh["win_x_1"].beg, 690), true);
+        if (Tab == 1) 绘制_1();
+        ImGui::EndChild();
+        
+        ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + wh["win_x_2"].beg/2, win_y + wh["win_y_2"].beg));
+        ImGui::BeginChild("自瞄内容", ImVec2(rightContentWidth - wh["win_x_2"].beg, 690), true);
+        if (Tab == 2) 自瞄_1();
+        ImGui::EndChild();
+        
+        ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + wh["win_x_3"].beg/2, win_y + wh["win_y_3"].beg));
+        ImGui::BeginChild("物资内容", ImVec2(rightContentWidth - wh["win_x_3"].beg, 690), true);
+        if (Tab == 4) 物资_1();
+        ImGui::EndChild();
+        
+        ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + wh["win_x_4"].beg/2, win_y + wh["win_y_4"].beg));
+        ImGui::BeginChild("设置内容", ImVec2(rightContentWidth - wh["win_x_4"].beg, 690), true);
+        if (Tab == 6) 设置_1();
+        ImGui::EndChild();
+        
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::End();       
+}
+if (!开关 && animationScale <= 0.0f) {
+windows = 0;
+}
+}
+}
+
+
+bool 待更新[20];
+void 主页_1() {
+    TouchScroll(true);
+    CenteredText(i18n::TL("主 页").c_str(), 1.5f);
+    ImGui::Spacing();
+    const float childWidth = ImGui::GetContentRegionAvail().x * 0.9f;
+    const float childPosX = (ImGui::GetContentRegionAvail().x - childWidth) / 2.0f;
+    ImGui::SetCursorPosX(childPosX);
+    
+    ImGui::BeginChild("主页独白", ImVec2(childWidth, 170), true, ImGuiWindowFlags_NoScrollbar);
+    {
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            ImGui::GetWindowPos(), 
+            ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x, 
+                  ImGui::GetWindowPos().y + ImGui::GetWindowSize().y), 
+            ImColor(230, 230, 230, 150), 
+            20.0f
+        );
+        
+        ImGui::Spacing();
+        CenteredText(i18n::TL("注意事项").c_str(), 1.0f);
+        std::string noticeText = i18n::TL("由叽里咕噜授权所有\n严禁盗图者四处传播、造谣\n任何欺诈他人、倒卖等将予以警告");
+        CenteredText(noticeText.c_str(), 1.0f);
+    }
+    ImGui::EndChild();
+    static bool firstPlay = true;
+    if (firstPlay) {
+        isLyricPlaying = true;
+        lyricStartTime = time(nullptr);
+        firstPlay = false;
+    }
+    
+    struct LyricState {
+        float alpha = 0.0f;
+        float scale = 1.0f;
+        float yOffset = 0.0f;
+        ImColor color;
+        bool isCurrent = false;
+        bool isPrevious = false;
+        time_t fadeStartTime = 0;
+    };
+    
+    static std::vector<LyricState> lyricStates(lyrics.size());
+    time_t currentTime = time(nullptr);
+    float elapsed = difftime(currentTime, lyricStartTime);
+    
+    if (elapsed >= 3.5f) {
+        lyricStartTime = currentTime;
+        
+        if (currentLyricIndex >= 0 && currentLyricIndex < lyrics.size()) {
+            lyricStates[currentLyricIndex].isCurrent = false;
+            lyricStates[currentLyricIndex].isPrevious = true;
+            lyricStates[currentLyricIndex].fadeStartTime = currentTime;
+        }
+              
+        currentLyricIndex = (currentLyricIndex + 1) % lyrics.size();
+        
+        lyricStates[currentLyricIndex].isCurrent = true;
+        lyricStates[currentLyricIndex].isPrevious = false;
+        lyricStates[currentLyricIndex].alpha = 1.0f;
+        lyricStates[currentLyricIndex].scale = 1.5f;
+        lyricStates[currentLyricIndex].color = ImColor(255, 0, 0, 255);
+    }
+    
+    for (int i = 0; i < lyrics.size(); i++) {
+        if (lyricStates[i].isPrevious) {
+            float fadeElapsed = difftime(currentTime, lyricStates[i].fadeStartTime);
+            float fadeProgress = fadeElapsed / 1.0f;
+            
+            if (fadeProgress >= 1.0f) {
+                lyricStates[i].isPrevious = false;
+                lyricStates[i].alpha = 0.0f;
+            } else {
+                lyricStates[i].alpha = 1.0f - fadeProgress;
+                lyricStates[i].scale = 1.0f + (0.3f * fadeProgress);
+                lyricStates[i].yOffset = 30.0f * fadeProgress;
+            }
+        }
+    }
+ 
+    float animationSpeed = 5.0f * ImGui::GetIO().DeltaTime;
+    for (int i = 0; i < lyrics.size(); i++) {
+        if (!lyricStates[i].isPrevious) {
+            lyricStates[i].alpha = ImLerp(lyricStates[i].alpha, (lyricStates[i].isCurrent) ? 1.0f : 0.7f, animationSpeed);
+            lyricStates[i].scale = ImLerp(lyricStates[i].scale, (lyricStates[i].isCurrent) ? 1.3f : 1.0f, animationSpeed);
+            lyricStates[i].yOffset = ImLerp(lyricStates[i].yOffset, (lyricStates[i].isCurrent) ? 0.0f : 30.0f, animationSpeed);
+        }
+    }
+    ImVec2 windowPos = ImGui::GetWindowPos();
+    float startX = windowPos.x + 20.0f;
+    float startY = windowPos.y + 260.0f;
+    if (!lyrics.empty() && currentLyricIndex >= 0 && currentLyricIndex < lyrics.size()) {
+        const char* currentLyric = lyrics[currentLyricIndex].c_str();
+        float currentFontSize = 40.0f * lyricStates[currentLyricIndex].scale;
+        ImGui::GetWindowDrawList()->AddText(
+            NULL, 
+            currentFontSize, 
+            ImVec2(startX, startY + lyricStates[currentLyricIndex].yOffset), 
+            ImColor(lyricStates[currentLyricIndex].color.Value.x, 
+                   lyricStates[currentLyricIndex].color.Value.y, 
+                   lyricStates[currentLyricIndex].color.Value.z, 
+                   lyricStates[currentLyricIndex].color.Value.w * lyricStates[currentLyricIndex].alpha), 
+            currentLyric
+        );
+        for (int i = 1; i <= 3; i++) {
+            int nextIndex = (currentLyricIndex + i) % lyrics.size();
+            if (nextIndex >= 0 && nextIndex < lyrics.size()) {
+                const char* nextLyric = lyrics[nextIndex].c_str();
+                float nextFontSize = currentFontSize * 0.8f;
+                float yOffset = 80.0f * i;
+                
+                ImGui::GetWindowDrawList()->AddText(
+                    NULL, 
+                    nextFontSize, 
+                    ImVec2(startX, startY + yOffset), 
+                    ImColor(0, 0, 0, static_cast<int>(200 * (1.0f - (i * 0.2f)))), 
+                    nextLyric
+                );
+            }
+        }
+    }
+}
+
+void 绘制_1() {
+    TouchScroll(true);
+    CenteredText(i18n::TL("绘 图").c_str(), 1.5f);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(20, 20));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 15));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
+      
+    Toggle("  方框",DrawIo[1]);
+    
+    Toggle("  骨骼",DrawIo[3]);
+    
+    Toggle("  射线",DrawIo[2]);
+    
+    Toggle("  距离",DrawIo[5]);
+    
+    Toggle("  雷达",DrawIo[7]);
+    
+    Toggle("  背敌",DrawIo[8]);
+    
+    Toggle("  人机",DrawIo[17]);
+    
+    Toggle("  背瞄<未完工>",DrawIo[88]);
+    
+    Toggle("  忽地",DrawIo[32]);
+    
+    Toggle("  手持",DrawIo[10]);
+    
+    Toggle("  手雷",DrawIo[14]);
+    
+    Toggle("  变色<测试中>",DrawIo[37]);
+    
+    Toggle("  血量",DrawIo[6]);
+      
+    Toggle("  FPS",DrawIo[20]);
+    vector<string> 敌背样式 = {"圆形", "箭头"};
+    whitecloud(敌背样式, draw_style[2], 0, 100.0f);
+    vector<string> triggerOptions = {"分格", "矩形", "传统"};
+    whitecloud(triggerOptions, draw_style[1], 0, 120.0f);
+    ImGui::PopStyleVar(3);
+    ImGui::TextColored(ImColor(150, 150, 150, 255), i18n::TL("关于雷达").c_str());
+    SliderFloat ("雷达X", &NumIo[1], 10, 3200, "%1.f");
+    SliderFloat ("雷达Y", &NumIo[2], 10, 1440, "%1.f");
+    SliderFloat ("雷达大小", &NumIo[19], 10, 300, "%1.f");
+    SliderFloat("雷达缩放", &NumIo[16], 70, 150, "%.0f%%", 5);
+    SliderFloat ("空余位", &NumIo[91], 10, 300, "%1.f");
+}
+void 自瞄_1() {
+    TouchScroll(true);
+    CenteredText(i18n::TL("自 瞄").c_str(), 1.5f);
+    
+    Toggle("  自瞄总开关",DrawIo[20]);
+    Toggle("  显示自瞄圈",DrawIo[45]);
+    Toggle("  触摸位置",DrawIo[21]);
+    Toggle("  动态范围",DrawIo[25]);
+    Toggle("  预瞄位置",DrawIo[49]);
+    ImGui::TextColored(ImColor(150, 150, 150, 255), i18n::TL("关于调节").c_str());
+    vector<string> 自瞄部位 = {"头部", "胸部"}; 
+    whitecloud(自瞄部位, NumIo[8], 0, 120.0f);
+    SliderFloat ("范围", &NumIo[3], 10.0f, 800.0f, "%1.f");
+    SliderFloat ("平滑", &NumIo[9], 1.0f, 50.0f, "%0.1f");
+    SliderFloat ("速度", &NumIo[4], 1.0f, 30.0f, "%0.1f");
+    SliderFloat ("触摸", &NumIo[7], 50.01f, 400.0f, "%0.2f");
+    SliderFloat ("压枪", &NumIo[14], 0.1f, 5.0f, "%.1f", 5);
+    SliderFloat ("预判", &NumIo[22], 0.1f, 5.0f, "%.1f", 5);
+    SliderFloat ("空余位", &NumIo[78], 0.1f, 5.0f, "%.1f", 5);
+    }
+
+void 设置_1() {
+    TouchScroll(true);
+    CenteredText(i18n::TL("设 置").c_str(), 1.5f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 10));
+    SliderFloat("人机方框", &绘制粗细[2], 0.0f, 15.0f, "%0.2f", 5);
+    SliderFloat("真人方框", &绘制粗细[1], 0.0f, 15.0f, "%0.2f", 5);
+    SliderFloat("真人射线", &绘制粗细[3], 0.0f, 15.0f, "%0.2f", 5);
+    SliderFloat("人机射线", &绘制粗细[4], 0.0f, 15.0f, "%0.2f", 5);
+    ImGui::TextColored(ImColor(150, 150, 150, 255), i18n::TL("屏幕录制").c_str());
+    ImGui::Spacing();
+    SliderFloat("录制时长", &录屏时长, 5.0f, 180.0f, "%.0f秒");
+    if (button(录屏 ? "停止录制" : "开始录制", 
+    ImVec2(ImGui::GetContentRegionAvail().x, 60), 
+    15.0f, 
+    ImVec4(0.0f, 0.0f, 0.0f, 0.0f),
+    录屏 ? ImVec4(1.0f, 0.2f, 0.2f, 1.0f) : ImVec4(0.2f, 0.8f, 0.2f, 1.0f))) {
+    录屏 = !录屏;
+    if (录屏) {
+    int randomNum = rand() % 99 + 1;
+    string fileName = "/sdcard/繁华" + to_string(randomNum) + ".mp4";
+    string command = "screenrecord --time-limit " + to_string(录屏时长) + " " + fileName + " &";
+    system(command.c_str());
+    timerStartTime = static_cast<int>(ImGui::GetTime());
+    isTimerRunning = true;
+       } 
+    else {
+    system("pkill -l SIGINT screenrecord");
+    isTimerRunning = false;
+        }
+    }    
+    ImGui::Spacing();
+    if (录屏) {
+    string timerText = i18n::TL("录制中") + ": " + to_string(static_cast<int>(ImGui::GetTime() - timerStartTime)) + i18n::TL("秒");
+    ImGui::TextColored(ImColor(1.0f, 0.2f, 0.2f, 1.0f), "%s", timerText.c_str());
+    } 
+    else {
+    ImGui::TextColored(ImColor(0.5f, 0.5f, 0.5f, 1.0f), i18n::TL("准备录制").c_str());
+    }
+    ImGui::TextColored(ImColor(150, 150, 150, 255), i18n::TL("数据管理").c_str());
+    ImGui::Spacing();
+    if (button("链接数据", ImVec2(-1, 70), 15.0f, 
+              ImVec4(0.0f, 0.0f, 0.0f, 0.0f), 
+              ImVec4(0.0f, 0.48f, 0.98f, 1.0f))) {
+    GetBase();
+    }   
+    ImGui::Spacing();
+    if (button("保存配置", ImVec2(-1, 70), 15.0f, 
+              ImVec4(0.0f, 0.0f, 0.0f, 0.0f), 
+              ImVec4(0.0f, 0.48f, 0.98f, 1.0f))) {
+        NumIoSave("繁华配置");
+    }
+    if (button("注销 | 退出", ImVec2(-1, 80), 15.0f, 
+              ImVec4(0.0f, 0.0f, 0.0f, 0.0f), 
+              ImVec4(1.0f, 0.2f, 0.2f, 1.0f))) {
+    exit(0);
+    }
+    if (button("留占位<无用>", ImVec2(-1, 80), 15.0f, 
+              ImVec4(0.0f, 0.0f, 0.0f, 0.0f), 
+              ImVec4(1.0f, 0.2f, 0.2f, 1.0f))) {
+    exit(0);
+    }
+    ImGui::PopStyleVar();
+}
+
+
+void 物资_1() {
+    TouchScroll(true);
+    CenteredText(i18n::TL("物 资").c_str(), 1.5f);
+    Toggle("  物资初始化", 物资[2]);
+    ImGui::TextColored(ImColor(150, 150, 150, 255), i18n::TL("载具类").c_str());
+    Toggle("  载具", 物资[1]);
+    Toggle("  盒子", 物资[45]);
+    Toggle("  宝箱状态", DrawIo[910]);
+    ImGui::Spacing();         
+    ImGui::TextColored(ImColor(150, 150, 150, 255), i18n::TL("武器类").c_str());
+    Toggle("  宝箱", 物资[18]);
+    Toggle("  信号枪", 物资[3]);
+    Toggle("  召回信号枪", 物资[9]);
+    ImGui::Spacing();   
+    ImGui::TextColored(ImColor(150, 150, 150, 255), i18n::TL("药品类").c_str());
+    Toggle("  止痛药", 物资[5]);
+    Toggle("  饮料", 物资[6]);
+    Toggle("  肾上腺素", 物资[7]);
+    Toggle("  自救器", 物资[8]);
+    Toggle("  药品", 物资[11]);
+    ImGui::Spacing();    
+    ImGui::TextColored(ImColor(150, 150, 150, 255), i18n::TL("特殊类").c_str());
+    Toggle("  金插", 物资[4]);
+    Toggle("  BOOS", 物资[69]);
+    Toggle("  超级物资", 物资[60]);
+    ImGui::Spacing();
+}
+
+void 灵动岛() {
+        float pxx = screen_x/2;
+        string play = to_string(fanhua.PlayerCount);
+        string bot = to_string(fanhua.BotCount);
+        errorBgWidth += (targetBgWidth - errorBgWidth) * bgAnimationSpeed;
+        errorBgHeight += (targetBgHeight - errorBgHeight) * bgAnimationSpeed;
+    
+        if (fanhua.libUE4) {
+        if (libUE4SuccessTime == 0) {
+        libUE4SuccessTime = time(nullptr);
+        targetBgWidth = 200.0f;
+        targetBgHeight = 40.0f;
+        }
+        time_t currentTime = time(nullptr);
+        float elapsed = difftime(currentTime, libUE4SuccessTime);
+        if (elapsed < 5.0f) {
+        string successMsg = i18n::TL("矩阵获取成功");
+        auto successSize = ImGui::CalcTextSize(successMsg.c_str());
+        float padding = 10.0f;
+        ImVec2 bgMin(pxx - errorBgWidth/2, 150 - errorBgHeight/2);
+        ImVec2 bgMax(pxx + errorBgWidth/2, 150 + errorBgHeight/2);
+        ImGui::GetForegroundDrawList()->AddRectFilled(bgMin, bgMax, ImColor(0, 200, 0, 200), 20.0f);
+        ImVec2 successPos(pxx - successSize.x/2, 150 - successSize.y/2);
+        ImGui::GetForegroundDrawList()->AddText(successPos, ImColor(255, 255, 255, 255), successMsg.c_str());
+        }
+        } else {
+        libUE4SuccessTime = 0;
+        string errorMsg = i18n::TL("矩阵获取失败，请重启辅助或获取数据试试");
+        auto errorSize = ImGui::CalcTextSize(errorMsg.c_str());
+        float textPadding = 20.0f;
+        targetBgWidth = errorSize.x + textPadding * 2;
+        targetBgHeight = 40.0f;
+        
+        ImVec2 bgMin(pxx - errorBgWidth/2, 150 - errorBgHeight/2);
+        ImVec2 bgMax(pxx + errorBgWidth/2, 150 + errorBgHeight/2);
+        ImGui::GetForegroundDrawList()->AddRectFilled(bgMin, bgMax, ImColor(255, 0, 0, 200), errorBgHeight/2.0f);
+        
+        ImVec2 errorPos(pxx - errorSize.x/2, 150 - errorSize.y/2);
+        ImGui::GetForegroundDrawList()->AddText(errorPos, ImColor(255, 255, 255), errorMsg.c_str());
+        }
+        if (!开关) {
+        const float dotSize = 13.0f;
+        
+        float ball_radius = dotSize;
+        const float balls_y = 30; 
+        const float horizontal_spacing = 32; 
+        const int total_balls = 3;
+
+        float start_x = screen_x/2 - (horizontal_spacing * (total_balls-1))/2;
+        
+        ImGui::GetForegroundDrawList()->AddCircleFilled(ImVec2(start_x, balls_y), ball_radius, ImColor(255, 0, 0, 255));
+        ImGui::GetForegroundDrawList()->AddCircleFilled(ImVec2(start_x + horizontal_spacing, balls_y), ball_radius, ImColor(255, 255, 0, 255));
+        ImGui::GetForegroundDrawList()->AddCircleFilled(ImVec2(start_x + 2*horizontal_spacing, balls_y), ball_radius, ImColor(0, 255, 0, 255));
+        }
+    
+        auto textSize_play = ImGui::GetFont()->CalcTextSizeA((50), FLT_MAX, -1, play.c_str(), NULL, NULL);
+        auto textSize_bot = ImGui::GetFont()->CalcTextSizeA((50), FLT_MAX, -1, bot.c_str(), NULL, NULL);
+    
+        ImVec2 play_pos(pxx - (textSize_play.x / 2) - (45), (73.5f) - (textSize_play.y / 2));
+        ImVec2 bot_pos(pxx - (textSize_bot.x / 2) + (45), (73.5f) - (textSize_bot.y / 2));
+    
+        for (int i = 0; i < 8; i++) {
+        float angle = i * (3.1415926f / 4.0f);
+        float offset_x = cosf(angle) * 2.0f;
+        float offset_y = sinf(angle) * 2.0f;
+        ImGui::GetForegroundDrawList()->AddText(NULL, (50), 
+            ImVec2(play_pos.x + offset_x, play_pos.y + offset_y), 
+            ImColor(0, 0, 0, 255), play.c_str());
+        }
+        ImGui::GetForegroundDrawList()->AddText(NULL, (50), play_pos, ImColor(255, 0, 0, 255), play.c_str());
+    
+        for (int i = 0; i < 8; i++) {
+        float angle = i * (3.1415926f / 4.0f);
+        float offset_x = cosf(angle) * 2.0f;
+        float offset_y = sinf(angle) * 2.0f;
+        ImGui::GetForegroundDrawList()->AddText(NULL, (50), 
+            ImVec2(bot_pos.x + offset_x, bot_pos.y + offset_y), 
+            ImColor(0, 0, 0, 255), bot.c_str());
+        }
+        ImGui::GetForegroundDrawList()->AddText(NULL, (50), bot_pos, ImColor(0, 255, 0, 240), bot.c_str());
+    
+        ImVec2 childWindowSize = ImVec2(650, 250);
+        ImVec2 childWindowPos = ImVec2(screen_x/2-(325), 0);
+        ImGui::SetNextWindowPos(childWindowPos);
+        ImGui::SetNextWindowSize(childWindowSize);
+        ImVec4 transparentColor = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, transparentColor);
+        ImGui::PushStyleColor(ImGuiCol_Border, transparentColor);
+        ImGui::PushStyleColor(ImGuiCol_BorderShadow, transparentColor);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 100);
+        ImGui::Begin("灵动岛点击事件", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+        ImGui::SetCursorPos(ImVec2((325) - (100), (33)));
+        if(ImGui::Button("", ImVec2((200), (80)))){
+        开关 = !开关;
+        }
+
+        ImGui::End();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(6);
+}
+
