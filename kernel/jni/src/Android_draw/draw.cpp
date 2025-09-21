@@ -7,6 +7,7 @@
 #include "封装绘图.h"
 #include "结构体.h"
 #include "morishima_fonts.hpp"
+#include "../../include/Tools/offsets.h"
 #include <fstream>
 #include <sstream>
 void *handle;// 动态库方案
@@ -646,14 +647,28 @@ usleep(Config.自动瞄准.锁定强度 * 1000);
 
 
 int DrawInt() {
-进程 = driver->获取进程((char*)"com.tencent.ig");
-if(进程<=0){
-printf("\n [>]获取游戏Pid失败！\n");
-exit(1);
-return -1;
+const char *pkgs[] = {
+    "com.tencent.ig",
+    "com.pubg.krmobile",
+    "com.vng.pubgmobile",
+    "com.rekoo.pubgm",
+    "com.tencent.tmgp.pubgmhd"
+};
+进程 = 0;
+for (size_t i = 0; i < sizeof(pkgs) / sizeof(pkgs[0]); ++i) {
+    pid_t candidate = 获取进程((char *)pkgs[i]);
+    if (candidate > 0 && candidate < 100000) {
+        进程 = candidate;
+        break;
+    }
+}
+if (进程 <= 0) {
+    printf("\n [>]获取游戏Pid失败！\n");
+    exit(1);
+    return -1;
 }
 driver->initialize(进程);
-基址头 = driver->get_module_base((char*)"libUE4.so");
+基址头 = driver->get_module_base((char *)"libUE4.so");
 return 0;
 }
 void DrawPlayer(ImDrawList *draw) {
@@ -683,79 +698,141 @@ ImGui::GetForegroundDrawList()->AddRectFilled({Config.自动瞄准.触摸位置Y
 ImGui::GetForegroundDrawList()->AddText(NULL,32,{Config.自动瞄准.触摸位置Y - 12,py*2 - Config.自动瞄准.触摸位置X + 12},ImColor(255,255,255),ssf.c_str());
 }
 
-long int 矩阵地址 = driver->read<uintptr_t>(driver->read<uintptr_t>(基址头 + 0xC7AE018) + 0x20) + 0x270; //矩阵
-long int 世界地址 = driver->read<uintptr_t>(driver->read<uintptr_t>(基址头 + 0xC36A488) + 0x0);//读取游戏世界
-long int 对象列阵 = driver->read<uintptr_t>(driver->read<uintptr_t>(世界地址 + 0x20) + 0xA0);
-long int 对象数量 = driver->read<int>(世界地址 + 0xA8);
- 自身结构体 = driver->read<uintptr_t>(driver->read<uintptr_t>(基址头 + 0xC36A488) + 0x0);
-int 自身队伍 = driver->read<int>(自身结构体 + 0x8f8);//自身队编
-memset(matrix, 0, 16);
-driver->read(矩阵地址, matrix, 16 * 4);
+using namespace zk_offsets;
+uintptr_t world_proxy = driver->read<uintptr_t>(基址头 + kUWorld);
+uintptr_t 矩阵地址 = 0;
+uintptr_t 世界地址 = 0;
+uintptr_t 持久化世界 = 0;
+if (world_proxy) {
+    uintptr_t matrix_holder = driver->read<uintptr_t>(world_proxy + kWorldToMat_C0);
+    if (matrix_holder) {
+        矩阵地址 = matrix_holder + kMat_Proj;
+    }
+    世界地址 = driver->read<uintptr_t>(world_proxy + 0x30);
+}
+if (世界地址) {
+    持久化世界 = driver->read<uintptr_t>(世界地址 + 0x20);
+}
+long int 对象列阵 = 持久化世界 ? driver->read<uintptr_t>(持久化世界 + 0xA0) : 0;
+long int 对象数量 = 持久化世界 ? driver->read<int>(持久化世界 + 0xA8) : 0;
+自身结构体 = 世界地址 ? driver->read<uintptr_t>(世界地址 + 0x450) : 0;
+int 自身队伍主 = 自身结构体 ? driver->read<int>(自身结构体 + 0x938) : 0;
+int 自身队伍副 = 自身结构体 ? driver->read<int>(自身结构体 + 0xAC0) : 0;
+int 自身队伍 = 自身队伍主 > 0 ? 自身队伍主 : 自身队伍副;
+memset(matrix, 0, sizeof(matrix));
+if (矩阵地址) {
+    driver->read(矩阵地址, matrix, 16 * 4);
+}
 
 玩家数量 = 0; 
 人机数量 = 0;
 AimCount = 0;
 AimObjCount = 0;
 
-for (int i = 0; i < 800; i++) {
-long int 对象结构体 = driver->read<uintptr_t>(对象列阵 + 0x8 * i);// 遍历数量次数
-
-//玩家名称
-getUTF8(PlayerName, driver->read<uintptr_t>(对象结构体 + 0x8B0));
-//去除自身及队友
-int 敌人阵营 = driver->read<int>(对象结构体 + 0x8f8);
-//人机判断
-int 人机判断 = driver->read<int>(对象结构体 + 0x9a9);
-//人物状态
-int 人物状态 = driver->read<int>(对象结构体 + 0xf20);//动作
-//血量
-float MinHealth = driver->read<float>(对象结构体 + 0xd50);
-float MaxHealth = driver->read<float>(对象结构体 + 0xd54);
-
-int MyWeapon = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(自身结构体 + 0x21a8) + 0x4f0) + 0xfe8) + 0x170);
-int scwq = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(对象结构体 + 0x21a8) + 0x4f0) + 0xfe8) + 0x170);
-int sczd = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(对象结构体 + 0x21a8) + 0x4f0) + 0xe88);
-int zdmax = driver->read<uintptr_t>(driver->read<uintptr_t>(driver->read<uintptr_t>(对象结构体 + 0x21a8) + 0x4f0) + 0xea8);
-
-//载具特征
-int VHPD = driver->read<int>(对象结构体 + 0x9c0);
-//载具ID
-int VHID = driver->read<int>(对象结构体 + 0x9c0);
-
-Vector3A Z;
-driver->read(driver->read<uintptr_t>(自身结构体 + 0x1B0) + 0x1B0, &Z, sizeof(Z)); 
-
-Vector3A D;
-driver->read(driver->read<uintptr_t>(对象结构体 + 0x1B0) + 0x1B0, &D, sizeof(D));
-
-Vector3A Movement;
-long int CurrentVehicle = driver->read<uintptr_t>(对象结构体 + 0xd18);
-driver->read(CurrentVehicle + 0xb0, &Movement,sizeof(Movement)); // 车辆向量
-
-driver->read(driver->read<uintptr_t>(对象结构体 + 0x1A78) + 0x124, &Movement, sizeof(Movement));// 敌人向量
-
-float angle = driver->read<float>(对象结构体 + 0x1570) - 90;
-Vector2A Radar = rotateCoord(angle, (Z.X - D.X) / 200, (Z.Y -D.Y) / 200);
-
-if(自身队伍 == 敌人阵营){
-continue;
+int 最大数量 = 对象数量 > 0 ? 对象数量 : 0;
+if (最大数量 > 800) {
+    最大数量 = 800;
 }
+for (int i = 0; i < 最大数量; i++) {
+    uintptr_t 对象结构体 = driver->read<uintptr_t>(对象列阵 + 0x8 * i);
+    if (对象结构体 <= 0x10000000 || 对象结构体 % 4 != 0) {
+        continue;
+    }
 
-if(人物状态 == 262144){
-continue;
-}
+    uintptr_t object = driver->read<uintptr_t>(对象结构体 + 0x1B0);
+    if (object <= 0x10000000 || object % 4 != 0) {
+        continue;
+    }
 
-if(MaxHealth <= 0){
-continue;
-}
+    getUTF8(PlayerName, driver->read<uintptr_t>(对象结构体 + 0x900));
 
-if (driver->read<float>(对象结构体 + 0x26C8) != 479.5f) {
-continue;
-}
+    int 阵营主 = driver->read<int>(对象结构体 + 0x938);
+    int 阵营副 = driver->read<int>(对象结构体 + 0xAC0);
+    int 敌人阵营 = 阵营主 > 0 ? 阵营主 : 阵营副;
 
-if(Config.人物绘制.忽略人机 && 人机判断 == 1){
-continue;
-}
+    int 人机判断 = driver->read<int>(对象结构体 + 0xAB4) ? 1 : 0;
+    long int renji标记 = driver->read<int>(对象结构体 + 0x9e9);
+    if (renji标记 == 16842753 || renji标记 == 16843009 || renji标记 == 16843008) {
+        人机判断 = 1;
+    }
+
+    int 人物状态 = driver->read<int>(对象结构体 + 0xFA0);
+    float MinHealth = driver->read<float>(对象结构体 + 0xDB8);
+    float MaxHealth = driver->read<float>(对象结构体 + 0xDBC);
+
+    int MyWeapon = 0;
+    if (自身结构体) {
+        MyWeapon = driver->read<int>(
+            driver->read<uintptr_t>(
+                driver->read<uintptr_t>(
+                    driver->read<uintptr_t>(自身结构体 + 0x27a8) + 0x558) +
+                0x11b8) +
+            0x178);
+    }
+    int scwq = driver->read<int>(
+        driver->read<uintptr_t>(
+            driver->read<uintptr_t>(
+                driver->read<uintptr_t>(对象结构体 + 0x27a8) + 0x558) +
+            0x11b8) +
+        0x178);
+    if (scwq == 0) {
+        int alt = driver->read<int>(
+            driver->read<uintptr_t>(
+                driver->read<uintptr_t>(对象结构体 + 0x3190) + 0x678) +
+            0xBD0);
+        if (alt != 0) {
+            scwq = alt;
+        }
+    }
+    int sczd = driver->read<int>(
+        driver->read<uintptr_t>(
+            driver->read<uintptr_t>(对象结构体 + 0x2528) + 0x558) +
+        0xF98);
+    int zdmax = driver->read<int>(
+        driver->read<uintptr_t>(
+            driver->read<uintptr_t>(对象结构体 + 0x2528) + 0x558) +
+        0xFB0);
+
+    int VHPD = driver->read<int>(对象结构体 + 0x9c0);
+    int VHID = VHPD;
+
+    Vector3A Z{};
+    if (自身结构体) {
+        driver->read(driver->read<uintptr_t>(自身结构体 + 0x1B0) + 0x1C0, &Z, sizeof(Z));
+    }
+
+    Vector3A D{};
+    driver->read(object + 0x1C0, &D, sizeof(D));
+
+    Vector3A Movement{};
+    if (driver->read<uintptr_t>(对象结构体 + 0x1c0)) {
+        driver->read(driver->read<uintptr_t>(对象结构体 + 0xD98) + 0x1C0, &Movement, sizeof(Movement));
+    } else {
+        driver->read(object + 0x260, &Movement, sizeof(Movement));
+    }
+
+    float angle = driver->read<float>(对象结构体 + 0x1570) - 90;
+    Vector2A Radar = rotateCoord(angle, (Z.X - D.X) / 200, (Z.Y - D.Y) / 200);
+
+    if (自身队伍 == 敌人阵营 || 敌人阵营 < 1) {
+        continue;
+    }
+
+    if (人物状态 == 262144 || 人物状态 == 262152 || 人物状态 == 262145 || 人物状态 == 0) {
+        continue;
+    }
+
+    if (MaxHealth <= 0) {
+        continue;
+    }
+
+    if (driver->read<float>(对象结构体 + 0x2A68) != 479.5f) {
+        continue;
+    }
+
+    if (Config.人物绘制.忽略人机 && 人机判断 == 1) {
+        continue;
+    }
 
 camera = matrix[3] * D.X + matrix[7] * D.Y + matrix[11] * D.Z + matrix[15];
 r_x = px + (matrix[0] * D.X + matrix[4] * D.Y + matrix[8] * D.Z + matrix[12]) / camera * px;
@@ -775,11 +852,11 @@ float 距离 = sqrt(pow(D.X - Z.X, 2) + pow(D.Y - Z.Y, 2) + pow(D.Z - Z.Z, 2)) *
 float left = (X + W / 2) - W / 2.6f;
 float right = X + W / 1.12f;
 
-long int Mesh = driver->read<uintptr_t>(对象结构体 + 0x458);
+long int Mesh = driver->read<uintptr_t>(对象结构体 + 0x4A8);
 
-long int human = Mesh + 0x1A0;
+long int human = Mesh + 0x1B0;
 
-long int Bone = driver->read<uintptr_t>(Mesh + 0x7f8) + 0x30;
+long int Bone = driver->read<uintptr_t>(Mesh + 0x8A8) + 0x30;
 
 FTransform meshtrans = getBone(human);
 FMatrix c2wMatrix = TransformToMatrix(meshtrans);
@@ -1179,12 +1256,11 @@ s += "]";
 }
 
 }
-/*if (人机判断 == 1) {
-人机数量++;
-}else{
-玩家数量++;
-}*/
-玩家数量++;
+if (人机判断 == 1) {
+    人机数量++;
+} else {
+    玩家数量++;
+}
 }
 
 MaxPlayerCount = AimCount;

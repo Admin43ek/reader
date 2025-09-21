@@ -1,0 +1,18 @@
+PUBGM Kernel Driver (arm64-v8a)
+================================
+
+This text manifest replaces the previously committed binary executable `PUBGM_kernel.sh`.
+To regenerate the driver locally, build with Android NDK r26d using:
+
+  /workspace/android-ndk-r26d/android-ndk-r26d/ndk-build \
+      -C /workspace/reader/kernel \
+      NDK_PROJECT_PATH=/workspace/reader/kernel \
+      APP_ABI=arm64-v8a
+
+The compiled image will be written to `kernel/libs/arm64-v8a/PUBGM_kernel.sh` (ignored in git).
+The last generated build before this conversion (2025-09-21T17:16:26Z UTC) had the checksum:
+
+  SHA-256  193ed99a199fbefd91e7940c5140393cd6382cf28176fbd5c80554e58f8d38d9
+
+Keep this manifest alongside the build output so future updates can document the
+exact command, toolchain and checksum for user verification.

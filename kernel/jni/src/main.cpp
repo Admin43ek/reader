@@ -90,6 +90,47 @@ char *EEEEEEy = "T.V/6$$L@`T.Tos5$u@`T.kC8A$B@`T.:s*E$wrG<-3fG<-fDfT%/Fgx=/*cjD'
 char *host = "w.eydata.net";//官网链接
 char *EEEEEEk = "%d: %8.4gtruefalse%s: %d%%s: %s%s: %.3f##menubarS8U8%uS16U16S32U32S64%lldU64%llufloat%.*s%%d%s##v##<##>z��z��Lz���{���{���{���{��Lz���z���{���{���z���z��=\]z{|pC�2e��A���<ofxImGui%d.%d#version %duniform mat4 ProjMtx;";
 char *ggapi = "DE4FC423A5075F9E";//程序公告
+const char* KEY_PRIMARY = "@zkernel";
+const char* KEY_SECONDARY = "@demonscheats";
+aoesjhgiwedjishsgj = (char*)KEY_PRIMARY;
+tfhjjbbnnnnEO = (char*)KEY_SECONDARY;
+ag1348iwsgj = (char*)KEY_PRIMARY;
+ag1816iwsgj = (char*)KEY_SECONDARY;
+EEEEEE = (char*)KEY_PRIMARY;
+EEEESE = (char*)KEY_SECONDARY;
+gmdzb = (char*)KEY_PRIMARY;
+psGdwg = (char*)KEY_SECONDARY;
+llllugg = (char*)KEY_PRIMARY;
+wecze = (char*)KEY_SECONDARY;
+phss = (char*)KEY_PRIMARY;
+ag3146iwsgj = (char*)KEY_SECONDARY;
+WABCMMK = (char*)KEY_PRIMARY;
+dlapi = (char*)KEY_SECONDARY;
+FIEHDKDN = (char*)KEY_PRIMARY;
+JJJEOEHEK = (char*)KEY_SECONDARY;
+IIREJN = (char*)KEY_PRIMARY;
+DWOSHMMM = (char*)KEY_SECONDARY;
+ag1315iwsgj = (char*)KEY_PRIMARY;
+agi1618wsgj = (char*)KEY_SECONDARY;
+EIHDOWJS = (char*)KEY_PRIMARY;
+FFFHJJJKTR = (char*)KEY_SECONDARY;
+tiapi = (char*)KEY_PRIMARY;
+EISHDF = (char*)KEY_SECONDARY;
+CKSOWHE = (char*)KEY_PRIMARY;
+RPWJXNC = (char*)KEY_SECONDARY;
+FOFEHEH = (char*)KEY_PRIMARY;
+a13giwsgj = (char*)KEY_SECONDARY;
+VJDNEEO = (char*)KEY_PRIMARY;
+DFJOWJ = (char*)KEY_SECONDARY;
+AOWJDJHD = (char*)KEY_PRIMARY;
+CGUIOPLJFA = (char*)KEY_SECONDARY;
+CVGFWERTMML = (char*)KEY_PRIMARY;
+EIEJDJD = (char*)KEY_SECONDARY;
+SHITER8 = (char*)KEY_PRIMARY;
+DISIWWK = (char*)KEY_SECONDARY;
+DIDHSSJ = (char*)KEY_PRIMARY;
+EEEEEEy = (char*)KEY_SECONDARY;
+ggapi = (char*)KEY_PRIMARY;
 char *kmpath = "/sdcard/Android/km";//卡密路径
 //登录数据
 char dlsj[1024];
@@ -112,7 +153,7 @@ if (fopen(kmpath, "r") == NULL)
 {//输入卡密
 printf("\n请输入卡密(点击右下角“lm”呼出键盘)：");
 scanf("%s",&km);
-int fd = open(kmpath, O_WRONLY | O_CREAT);
+int fd = open(kmpath, O_WRONLY | O_CREAT, 0644);
 write(fd, km, sizeof(km));  // 写入文本
 close(fd);
 }else{//读取卡密
